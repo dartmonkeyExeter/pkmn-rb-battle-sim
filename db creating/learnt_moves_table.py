@@ -51,7 +51,7 @@ for i in range(1, 152):
             continue
         
         # Process the table based on the index
-        if idx == 0:
+        if idx == 0 and str(table.find_all('tr')[0].text).split(" ")[0] == "Lv.":
             for row in table.find_all('tr')[1:]:
                 cols = row.find_all('td')
                 level = cols[0].text
@@ -73,7 +73,7 @@ for i in range(1, 152):
                     print(url)
                     continue
                 
-        elif idx == 1:
+        elif idx == 1 and str(table.find_all('tr')[0].text).split(" ")[0] == "TM":
             for row in table.find_all('tr')[1:]:
                 cols = row.find_all('td')
                 move = cols[1].text
@@ -94,7 +94,7 @@ for i in range(1, 152):
                     print(url)
                     continue
                 
-        elif idx == 2:
+        elif idx == 2 and str(table.find_all('tr')[0].text).split(" ")[0] == "HM":
             for row in table.find_all('tr')[1:]:
                 cols = row.find_all('td')
                 move = cols[1].text
