@@ -7,7 +7,21 @@ conn = sqlite3.connect('FirstGenPokemon.db')
 
 # Create a cursor object
 c = conn.cursor()
-c.execute("DELETE FROM evolution")
+c.execute("DROP TABLE IF EXISTS evolution;")
+queries = """
+CREATE TABLE IF NOT EXISTS evolution (
+    Pokemon_ID  INTEGER  NOT NULL,
+    Evolution_Pokemon_ID  INTEGER  NOT NULL,
+    Method      TEXT,
+    Level       INTEGER,
+    Item_ID     INTEGER,
+    PRIMARY KEY (Pokemon_ID, Evolution_Pokemon_ID),
+    FOREIGN KEY (Pokemon_ID) REFERENCES pokemon(Number),
+    FOREIGN KEY (Evolution_Pokemon_ID) REFERENCES pokemon(Number),
+    FOREIGN KEY (Item_ID) REFERENCES items(Item_ID)
+);
+"""
+c.executescript(queries)
 
 for i in range(1,152):
     html = requests.get(f"https://www.serebii.net/pokedex/{i:03}.shtml").text
@@ -88,7 +102,7 @@ for i in range(1,152):
                     next_pokemon = order[idx + 2].split(": ")[1]
                     next_no = c.execute("SELECT Number FROM pokemon WHERE Name = ?", (next_pokemon,)).fetchone()[0]
                     print(f"{pokemon} evolves into {next_pokemon} with {item}")
-                    c.execute("INSERT INTO evolution (Pokemon_ID, Evolution_Pokemon_ID, Method, item_id) VALUES (?, ?, ?, ?)", (no, next_no, f"ITEM", item_id))
+                    c.execute("INSERT INTO evolution (Pokemon_ID, Evolution_Pokemon_ID, Method, Item_id) VALUES (?, ?, ?, ?)", (no, next_no, f"ITEM", item_id))
                     
                 if order[idx + 1].split(": ")[0] == "Trade" and order[idx + 2].split(": ")[0] == "Pokemon":
                     # pokemon evolves by trade into next pokemon

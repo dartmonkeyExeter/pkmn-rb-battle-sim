@@ -10,7 +10,6 @@ cursor = conn.cursor()
 queries = """
 DROP TABLE IF EXISTS moves;
 DROP TABLE IF EXISTS pokemon_moves;
-DROP TABLE IF EXISTS evolution;
 
 CREATE TABLE IF NOT EXISTS moves (
     Move_ID     INTEGER  NOT NULL UNIQUE PRIMARY KEY,
@@ -31,16 +30,6 @@ CREATE TABLE IF NOT EXISTS pokemon_moves (
     Method      TEXT,
     FOREIGN KEY (Pokemon_ID) REFERENCES pokemon(Number),
     FOREIGN KEY (Move_ID) REFERENCES moves(Move_ID)
-);
-
-CREATE TABLE IF NOT EXISTS evolution (
-    Pokemon_ID  INTEGER  NOT NULL,
-    Evolution_Pokemon_ID  INTEGER  NOT NULL,
-    Method      TEXT,
-    Level       INTEGER,
-    PRIMARY KEY (Pokemon_ID, Evolution_Pokemon_ID),
-    FOREIGN KEY (Pokemon_ID) REFERENCES pokemon(Number),
-    FOREIGN KEY (Evolution_Pokemon_ID) REFERENCES pokemon(Number)
 );
 """
 cursor.executescript(queries)
@@ -67,7 +56,7 @@ for row in rows:
     if len(cols) == 7:  # Ensure the row has the expected number of columns
         move_name = cols[0].text.strip()
         move_type = cols[1].text.strip().lower()
-        category = cols[2].text.strip().lower()
+        category = str(cols[2]).split('alt="')[1].split('"')[0].lower()
         power = cols[3].text.strip()
         accuracy = cols[4].text.strip()
         pp = cols[5].text.strip()
