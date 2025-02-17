@@ -58,7 +58,7 @@ class Pokemon():
 
         self.reflect = False
         self.light_screen = False
-        self.bide_dmg = 0
+        self.collected_dmg = 0 # used for moves like counter and bide and mirror coat n stuff
         self.turn_count = 0 # used for moves like bide and rollout n stuff
         self.dot_turns = 0 # used for moves like toxic and leech seed
 

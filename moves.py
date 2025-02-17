@@ -10,6 +10,8 @@ class Move:
         self.pp = pp
         self.curr_pp = pp
         self.return_messages = []
+        self.disabled = False
+        self.crit_buff = False
 
     def __repr__(self):
         return f"{self.__class__.__name__}(Type: {self.type}, Power: {self.power}, Accuracy: {self.accuracy}, PP: {self.pp})"
@@ -136,12 +138,16 @@ def check_effectiveness(move_type, target):
     for type in target.types:
         if type is None:
             continue
-        if CHART[move_type][type] == 0:
-            final_effectiveness *= 0
-        elif CHART[move_type][type] == 0.5:
-            final_effectiveness *= 0.5
-        elif CHART[move_type][type] == 2:
-            final_effectiveness *= 2
+        try:
+            if CHART[move_type][type] == 0:
+                final_effectiveness *= 0
+            elif CHART[move_type][type] == 0.5:
+                final_effectiveness *= 0.5
+            elif CHART[move_type][type] == 2:
+                final_effectiveness *= 2
+        except KeyError:
+            # If the type isn't in the chart, it's neutral
+            pass
 
     if final_effectiveness == 0:
         return "It had no effect..."
@@ -150,7 +156,7 @@ def check_effectiveness(move_type, target):
     elif final_effectiveness == 2:
         return "It's super effective!"
 
-def apply_stat_change(target, stat, change):
+def apply_stat_change(target, stat, change, enemy=False):
     """Apply changes to stats. Stat stages range from -6 to 6."""
     stat_map = {
         "attack": "atk_stage",
@@ -169,10 +175,10 @@ def apply_stat_change(target, stat, change):
         new_stage = max(-6, min(new_stage, 6))  # Clamps between -6 and 6
         setattr(target, stat_stage, new_stage)
 
-        return f"{target.nickname}'s {stat} {'rose' if change > 0 else 'fell'}!"
+        return f"{"Enemy " if enemy else ""}{target.nickname}'s {stat} {'rose' if change > 0 else 'fell'}!"
     return None
 
-def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=None, status_change=None, vol_status_change=None):
+def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=None, status_change=None, vol_status_change=None, status_target=None, vol_status_target=None, dot_turns=None, damage_override=None, self_damage=None):
     """
     Handles the effect of a move, including damage calculation, stat changes, and status effects.
     
@@ -190,63 +196,112 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
     # Reduce PP
     move.curr_pp -= 1
     
-    # Accuracy check
-    if random.randint(0, 100) < calculate_accuracy(move.accuracy, user.accuracy_stage, target.evasion_stage):
-        # Calculate damage
-        damage = calculate_damage(user.level, move.type, move.category, target.types, user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, move.power, 
-                                  stab_check(move.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
+    if move.power != 0 or damage_override is not None:
+        # Accuracy check
+        if random.randint(0, 100) < calculate_accuracy(move.accuracy, user.accuracy_stage, target.evasion_stage):
+            # Calculate damage (if applicable)
         
-        # Apply damage to target
-        target.curr_hp -= damage
-        return_messages.append(f"{"ENEMY " if enemy is True else ""}{user.nickname} used {move.name}!")
-        
-        # Check for critical hit
-        if calculate_critical_hit(user.speed, user.crit_boost, 0.5):
-            return_messages.append("Critical hit!")
-        
-        # Apply stat changes (if any)
+            crit = calculate_critical_hit(user.speed, user.crit_boost, 4 if move.crit_buff else 0.5)
+            
+            if damage_override is not None:
+                damage = damage_override
+            else:
+                damage = calculate_damage(user.level, move.type, move.category, target.types, user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, move.power, 
+                                stab_check(move.type, user.types), crit, user.reflect, user.light_screen)
+            # Apply damage to target
+            target.curr_hp -= damage
+            return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname} used {move.name}!")
+            # Check for critical hit
+            if crit:
+                return_messages.append("Critical hit!")
+            
+
+            if self_damage:
+                user.curr_hp -= self_damage
+                return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname}'s hit with recoil!")
+
+            if dot_turns:
+                target.dot_turns = dot_turns
+            
+            # Apply stat changes (if any)
+            if stat_changes:
+                for stat, change in stat_changes.items():
+                    stat_message = apply_stat_change(stat_target, stat, change, True if stat_target == target else False)
+                    if stat_message:
+                        return_messages.append(stat_message)
+            
+            # Apply status change (if any)
+            if status_change:
+                status = list(status_change.keys())[0]  # Get the status type (e.g., 'poisoned')
+                if status == 'poisoned' and status_target is None:  # Only apply if target isn't already poisoned
+                    status_target = 'poisoned'
+                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now poisoned!")
+                if status == 'paralyzed' and status_target is None:
+                    status_target = 'paralyzed'
+                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now paralyzed!")
+                if status == 'burned' and status_target is None:
+                    status_target = 'burned'
+                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now burned!")
+                if status == 'frozen' and status_target is None:
+                    status_target = 'frozen'
+                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now frozen!")
+                if status == 'sleep' and status_target is None:
+                    status_target = 'sleep'
+                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now asleep!")
+
+            
+            # Apply volatile status change (if any)
+            if vol_status_change:
+                vol_status = list(vol_status_change.keys())[0]  # Get the volatile status type (e.g., 'confusion')
+                if vol_status not in vol_status_target.vol_status:  # Only apply if it's not already in the list
+                    vol_status_target.vol_status.append(vol_status)
+                    return_messages.append(f"{"Enemy " if enemy is True else ""}{vol_status_target.nickname} is now affected by {vol_status}!")
+            
+            # Effectiveness check
+            effectiveness = check_effectiveness(move.type, target)
+            return_messages.append(effectiveness)
+            
+        else:
+            return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname}'s attack missed!")
+    else:
+        return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname} used {move.name}!")
         if stat_changes:
             for stat, change in stat_changes.items():
-                stat_message = apply_stat_change(stat_target, stat, change)
+                stat_message = apply_stat_change(stat_target, stat, change, True if stat_target == target else False)
                 if stat_message:
                     return_messages.append(stat_message)
         
         # Apply status change (if any)
         if status_change:
             status = list(status_change.keys())[0]  # Get the status type (e.g., 'poisoned')
-            if status == 'poisoned' and target.status is None:  # Only apply if target isn't already poisoned
-                target.status = 'poisoned'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{target.nickname} is now poisoned!")
-            if status == 'paralyzed' and target.status is None:
-                target.status = 'paralyzed'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{target.nickname} is now paralyzed!")
-            if status == 'burned' and target.status is None:
-                target.status = 'burned'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{target.nickname} is now burned!")
-            if status == 'frozen' and target.status is None:
-                target.status = 'frozen'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{target.nickname} is now frozen!")
-            if status == 'sleep' and target.status is None:
-                target.status = 'sleep'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{target.nickname} is now asleep!")
+            if status == 'poisoned' and status_target is None:  # Only apply if target isn't already poisoned
+                status_target = 'poisoned'
+                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now poisoned!")
+            if status == 'paralyzed' and status_target is None:
+                status_target = 'paralyzed'
+                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now paralyzed!")
+            if status == 'burned' and status_target is None:
+                status_target = 'burned'
+                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now burned!")
+            if status == 'frozen' and status_target is None:
+                status_target = 'frozen'
+                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now frozen!")
+            if status == 'sleep' and status_target is None:
+                status_target = 'sleep'
+                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now asleep!")
 
         
         # Apply volatile status change (if any)
         if vol_status_change:
             vol_status = list(vol_status_change.keys())[0]  # Get the volatile status type (e.g., 'confusion')
-            if vol_status not in target.vol_status:  # Only apply if it's not already in the list
-                target.vol_status.append(vol_status)
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{target.nickname} is now affected by {vol_status}!")
-        
-        # Effectiveness check
-        effectiveness = check_effectiveness(move.type, target)
-        return_messages.append(effectiveness)
-        
-    else:
-        return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname}'s attack missed!")
-
-    return return_messages, damage
-
+            if vol_status not in vol_status_target.vol_status:  # Only apply if it's not already in the list
+                vol_status_target.vol_status.append(vol_status)
+                return_messages.append(f"{"Enemy " if enemy is True else ""}{vol_status_target.nickname} is now affected by {vol_status}!")
+    try:
+        return return_messages, damage
+    except UnboundLocalError:
+        return return_messages, None
+    
 class Absorb(Move):
     def __init__(self):
         super().__init__(name="Absorb", type="grass", category="special", power=20, accuracy=100, pp=25)
@@ -256,378 +311,329 @@ class Absorb(Move):
         user.curr_hp += dmg // 2
         return msgs
 
-
 class Acid(Move):
     def __init__(self):
         super().__init__(name="Acid", type="poison", category="special", power=40, accuracy=100, pp=30)
 
-    def effect(self, user, target):
-        msgs, dmg = apply_move_effect(self, user, target, stat_changes={'defense': -1}, stat_target=target)
-
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 77:
+            return apply_move_effect(self, user, target, enemy, stat_changes={'defense': -1}, stat_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Acidarmor(Move):
     def __init__(self):
         super().__init__(name="Acid Armor", type="poison", category="status", power=0, accuracy=0, pp=20)
 
-    def effect(self, user, target):
-        self.return_messages = []
-        self.curr_pp -= 1
-        user.defense_stage += 2
-        if user.defense_stage > 6:
-            user.defense_stage = 6
-            self.return_messages.append("user defense max")
-        else:
-            self.return_messages.append("sharply raised user defense")
-        return self.return_messages
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, stat_changes={'defense': 2}, stat_target=user)[0]
 
 class Agility(Move):
     def __init__(self):
         super().__init__(name="Agility", type="psychic", category="status", power=0, accuracy=0, pp=30)
 
-    def effect(self, user, target):
-        self.return_messages = []
-        self.curr_pp -= 1
-        user.speed_stage += 2
-        if user.speed_stage > 6:
-            user.speed_stage = 6
-            self.return_messages.append("user speed max")
-        else:
-            self.return_messages.append("sharply raised user speed")
-       
-        return self.return_messages
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, stat_changes={'speed': 2}, stat_target=user)[0]
 
 class Amnesia(Move):
     def __init__(self):
         super().__init__(name="Amnesia", type="psychic", category="status", power=0, accuracy=0, pp=20)
 
-    def effect(self, user, target):
-        self.return_messages = []
-        self.curr_pp -= 1
-        user.spdef_stage += 2
-        if user.spdef_stage > 6:
-            user.spdef_stage = 6
-            self.return_messages.append("user special defense max")
-        else:
-            self.return_messages.append("sharply raised user special defense")
-        return self.return_messages
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, stat_changes={'spdef': 2}, stat_target=user)[0]
 
 class Aurorabeam(Move):
     def __init__(self):
         super().__init__(name="Aurora Beam", type="ice", category="special", power=65, accuracy=100, pp=20)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        self.return_messages = []
-
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-            
-            # 33% chance to lower attack
-            if random.randint(0, 255) < 85:
-                target.atk_stage -= 1
-                if target.atk_stage < -6:
-                    target.atk_stage = -6
-                    self.return_messages.append("enemy attack min")
-                else:
-                    self.return_messages.append("lowered enemy attack")
-            
-            target.hp -= damage
-
-            if CHART[self.type][target.types[0]] == 2 or CHART[self.type][target.types[1]] == 2:
-                self.return_messages.append("super effective")
-
-            elif CHART[self.type][target.types[0]] == 0.5 or CHART[self.type][target.types[1]] == 0.5:
-                self.return_messages.append("not very effective")
-
-            elif CHART[self.type][target.types[0]] == 0 or CHART[self.type][target.types[1]] == 0:
-                self.return_messages.append("no effect")
-
-            else:
-                self.return_messages.append("hit")
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 77:
+            return apply_move_effect(self, user, target, enemy, stat_changes={'attack': -1}, stat_target=target)[0]
         else:
-            self.return_messages.append("miss")
-
-        return self.return_messages
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Barrage(Move):
     def __init__(self):
         super().__init__(name="Barrage", type="normal", category="physical", power=15, accuracy=85, pp=20)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
+    def effect(self, user, target, enemy):
         hits = random.randint(2, 5)
-        self.return_messages = []
-        # gonna do multi hits with a list, return it and then do the damage in the main loop, just so
-        # i can do seperate messages for each hit
-        hit_damages = []
+        final = []
         for i in range(hits):
-            if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-                damage = calculate_damage(user.level, self.type, self.category, target.types, user.atk, user.atk_stage, target.defense, target.defense_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-                hit_damages.append(damage)
-                # check the chart for effectiveness
-                if CHART[self.type][target.types[0]] == 2 or CHART[self.type][target.types[1]] == 2:
-                    self.return_messages.append("super effective")
-                elif CHART[self.type][target.types[0]] == 0.5 or CHART[self.type][target.types[1]] == 0.5:
-                    self.return_messages.append("not very effective")
-                elif CHART[self.type][target.types[0]] == 0 or CHART[self.type][target.types[1]] == 0:
-                    self.return_messages.append("no effect")
-                else:
-                    self.return_messages.append("hit")
-            else:
-                hit_damages.append(0)
-                self.return_messages.append("miss")
+            final.append(apply_move_effect(self, user, target, enemy)[0])
+        return final
 
-        return self.return_messages, hit_damages
-
-                
 class Barrier(Move):
     def __init__(self):
         super().__init__(name="Barrier", type="psychic", category="status", power=0, accuracy=0, pp=20)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        self.return_messages = []
-        user.defense_stage += 2
-        if user.defense_stage > 6:
-            user.defense_stage = 6
-            self.return_messages.append("user defense max")
-        else:
-            self.return_messages.append("sharply raised user defense")
-
-        return self.return_messages
-
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, stat_changes={'defense': 2}, stat_target=user)[0]
 
 class Bide(Move):
     def __init__(self):
         super().__init__(name="Bide", type="normal", category="physical", power=0, accuracy=0, pp=10)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        self.return_messages = []
-        user.status = "bide"
-        user.vol_status.append("bide")
-        user.bide_dmg = 0
+    def effect(self, user, target, enemy):
+        user.turn_count = random.randint(2,3)
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'bide': True}, vol_status_target=user)[0]
 
 class Bind(Move):
     def __init__(self):
         super().__init__(name="Bind", type="normal", category="physical", power=15, accuracy=85, pp=20)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.atk, user.atk_stage, target.defense, target.defense_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-            target.dot_turns = random.randint(4, 5)
-            target.hp -= damage
-
-
-
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'bind': True}, vol_status_target=target, dot_turns=random.randint(4, 5))[0]
 
 class Bite(Move):
     def __init__(self):
         super().__init__(name="Bite", type="dark", category="physical", power=60, accuracy=100, pp=25)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.atk, user.atk_stage, target.defense, target.defense_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-            
-            # 30% chance to flinch
-            if random.randint(0, 255) < 77:
-                target.vol_status.append("flinch")
-            
-            target.hp -= damage
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 77:
+            return apply_move_effect(self, user, target, enemy, status_change={'flinch': True}, status_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Blizzard(Move):
     def __init__(self):
         super().__init__(name="Blizzard", type="ice", category="special", power=110, accuracy=70, pp=5)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-            
-            # 30% chance to freeze
-            if random.randint(0, 255) < 77:
-                target.status = "freeze"
-            
-            target.hp -= damage
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 77:
+            return apply_move_effect(self, user, target, enemy, status_change={'frozen': True}, status_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Bodyslam(Move):
     def __init__(self):
         super().__init__(name="Body Slam", type="normal", category="physical", power=85, accuracy=100, pp=15)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.atk, user.atk_stage, target.defense, target.defense_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-            
-            # 30% chance to paralyze
-            if random.randint(0, 255) < 77:
-                target.status = "paralyze"
-            
-            target.hp -= damage
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 77:
+            return apply_move_effect(self, user, target, enemy, status_change={'paralyzed': True}, status_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Boneclub(Move):
     def __init__(self):
         super().__init__(name="Bone Club", type="ground", category="physical", power=65, accuracy=85, pp=20)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.atk, user.atk_stage, target.defense, target.defense_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-            
-            # 10% chance to flinch
-            if random.randint(0, 255) < 26:
-                target.vol_status.append("flinch")
-            
-            target.hp -= damage
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 33:
+            return apply_move_effect(self, user, target, enemy, status_change={'flinch': True}, status_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Bonemerang(Move):
     def __init__(self):
         super().__init__(name="Bonemerang", type="ground", category="physical", power=50, accuracy=90, pp=10)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
+    def effect(self, user, target, enemy):
         hits = 2
+        final = []
         for i in range(hits):
-            if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-                damage = calculate_damage(user.level, self.type, self.category, target.types, user.atk, user.atk_stage, target.defense, target.defense_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-                target.hp -= damage
+            final.append(apply_move_effect(self, user, target, enemy)[0])
+        return final
 
 class Bubble(Move):
     def __init__(self):
         super().__init__(name="Bubble", type="water", category="special", power=40, accuracy=100, pp=30)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-            
-            # 10% chance to lower speed
-            if random.randint(0, 255) < 26:
-                target.speed_stage -= 1
-                if target.speed_stage < -6:
-                    target.speed_stage = -6
-            
-            target.hp -= damage
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 33:
+            return apply_move_effect(self, user, target, enemy, stat_changes={'speed': -1}, stat_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Bubblebeam(Move):
     def __init__(self):
         super().__init__(name="Bubble Beam", type="water", category="special", power=65, accuracy=100, pp=20)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.5), user.reflect, user.light_screen)
-            
-            # 10% chance to lower speed
-            if random.randint(0, 255) < 26:
-                target.speed_stage -= 1
-                if target.speed_stage < -6:
-                    target.speed_stage = -6
-            
-            target.hp -= damage
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 33:
+            return apply_move_effect(self, user, target, enemy, stat_changes={'speed': -1}, stat_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Clamp(Move):
     def __init__(self):
         super().__init__(name="Clamp", type="water", category="physical", power=35, accuracy=85, pp=15)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
-        # this move sucks to develop
-        # only the first hit can crit
-        if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-            damage = calculate_damage(user.level, self.type, self.category, target.types, user.atk, user.atk_stage, target.defense, target.defense_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 1), user.reflect, user.light_screen)
-            target.hp -= damage
-            target.vol_status.append("clamp")
-            # clamp calculates dot turns weirdly
-            # 37.5% chance for 2 turns, 37.5% chance for 3, 12.5% chance for 4, 12.5% chance for 5
-            target.dot_turns = random.choice([2, 2, 2, 3, 3, 3, 4, 5]) # i think this is right
+    def effect(self, user, target, enemy):
+        rand = random.choice([2, 2, 2, 3, 3, 3, 4, 5])
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'clamp': True}, vol_status_target=target, dot_turns=rand)[0]
 
 class Cometpunch(Move):
     def __init__(self):
         super().__init__(name="Comet Punch", type="normal", category="physical", power=18, accuracy=85, pp=15)
 
-    def effect(self, user, target):
-        self.curr_pp -= 1
+    def effect(self, user, target, enemy):
         hits = random.randint(2, 5)
+        final = []
         for i in range(hits):
-            if random.randint(0, 100) < calculate_accuracy(self.accuracy, user.accuracy_stage, target.evasion_stage):
-                damage = calculate_damage(user.level, self.type, self.category, target.types, user.atk, user.atk_stage, target.defense, target.defense_stage, self.power, stab_check(self.type, user.types), calculate_critical_hit(user.speed, user.crit_boost, 0.125), user.reflect, user.light_screen)
-                target.hp -= damage
+            final.append(apply_move_effect(self, user, target, enemy)[0])
+        return final
 
 class Confuseray(Move):
     def __init__(self):
         super().__init__(name="Confuse Ray", type="ghost", category="status", power=0, accuracy=100, pp=10)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'confusion': True}, vol_status_target=target)[0]
+
 class Confusion(Move):
     def __init__(self):
         super().__init__(name="Confusion", type="psychic", category="special", power=50, accuracy=100, pp=25)
+
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 33:
+            return apply_move_effect(self, user, target, enemy, status_change={'confusion': True}, status_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Constrict(Move):
     def __init__(self):
         super().__init__(name="Constrict", type="normal", category="physical", power=10, accuracy=100, pp=35)
 
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 77:
+            return apply_move_effect(self, user, target, enemy, stat_changes={'speed': -1}, stat_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
+
 class Conversion(Move):
     def __init__(self):
         super().__init__(name="Conversion", type="normal", category="status", power=0, accuracy=0, pp=30)
+
+    def effect(self, user, target, enemy):
+        user.types = target.types
+        # weird edgecase move, just gonna return the correct message
+        if enemy:
+            return [f"Enemy {user.nickname} transformed into the {target.types[0]} type!"]
+        return [f"{user.nickname} transformed into the {target.types[0]} type!"]
 
 class Counter(Move):
     def __init__(self):
         super().__init__(name="Counter", type="fighting", category="physical", power=0, accuracy=100, pp=20)
 
+    def effect(self, user, target, enemy):
+        if user.collected_dmg > 0:
+            return apply_move_effect(self, user, target, enemy, damage_override=user.collected_dmg * 2)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
+
 class Crabhammer(Move):
     def __init__(self):
         super().__init__(name="Crabhammer", type="water", category="physical", power=100, accuracy=90, pp=10)
+        self.crit_buff = True
+
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 33:
+            return apply_move_effect(self, user, target, enemy, stat_changes={'defense': -1}, stat_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Cut(Move):
     def __init__(self):
-        super().__init__(name="Cut", type="normal", category="physical", power=50, accuracy=95, 
-pp=30)
+        super().__init__(name="Cut", type="normal", category="physical", power=50, accuracy=95, pp=30)
+
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy)[0]
 
 class Defensecurl(Move):
     def __init__(self):
         super().__init__(name="Defense Curl", type="normal", category="status", power=0, accuracy=0, pp=40)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, stat_changes={'defense': 1}, stat_target=user)[0]
+
 class Dig(Move):
     def __init__(self):
         super().__init__(name="Dig", type="ground", category="physical", power=80, accuracy=100, pp=10)
+
+    def effect(self, user, target, enemy):
+        user.vol_status.append('dig')
+        return [f"{"Enemy " if enemy is True else ""}{user.nickname} burrowed underground!"]
 
 class Disable(Move):
     def __init__(self):
         super().__init__(name="Disable", type="normal", category="status", power=0, accuracy=100, pp=20)
 
+    def effect(self, user, target, enemy):
+        pass # once the actual battle system is implemented, this will be done
+
 class Dizzypunch(Move):
     def __init__(self):
         super().__init__(name="Dizzy Punch", type="normal", category="physical", power=70, accuracy=100, pp=10)
+
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 33:
+            return apply_move_effect(self, user, target, enemy, status_change={'confusion': True}, status_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
 
 class Doublekick(Move):
     def __init__(self):
         super().__init__(name="Double Kick", type="fighting", category="physical", power=30, accuracy=100, pp=30)
 
+    def effect(self, user, target, enemy):
+        hits = 2
+        final = []
+        for i in range(hits):
+            final.append(apply_move_effect(self, user, target, enemy)[0])
+        return final
+
 class Doubleslap(Move):
     def __init__(self):
         super().__init__(name="Double Slap", type="normal", category="physical", power=15, accuracy=85, pp=10)
+
+    def effect(self, user, target, enemy):
+        hits = random.randint(2, 5)
+        final = []
+        for i in range(hits):
+            final.append(apply_move_effect(self, user, target, enemy)[0])
+        return final
 
 class Doubleteam(Move):
     def __init__(self):
         super().__init__(name="Double Team", type="normal", category="status", power=0, accuracy=0, pp=15)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, stat_changes={'evasion': 1}, stat_target=user)[0]
+
 class Doubleedge(Move):
     def __init__(self):
         super().__init__(name="Double-Edge", type="normal", category="physical", power=120, accuracy=100, pp=15)
+
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, self_damage=user.curr_hp // 3)[0]
 
 class Dragonrage(Move):
     def __init__(self):
         super().__init__(name="Dragon Rage", type="dragon", category="special", power=0, accuracy=100, pp=10)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, damage_override=40)[0]
+
 class Dreameater(Move):
     def __init__(self):
         super().__init__(name="Dream Eater", type="psychic", category="special", power=100, accuracy=100, pp=15)
 
+    def effect(self, user, target, enemy):
+        if 'sleep' in target.vol_status:
+            msgs, dmg = apply_move_effect(self, user, target, enemy)
+            user.curr_hp += dmg // 2
+            return msgs
+        else:
+            return [f"{"Enemy" if enemy is True else ""}{target.nickname} used {self.name}!", "But it failed!"]
+
 class Drillpeck(Move):
     def __init__(self):
         super().__init__(name="Drill Peck", type="flying", category="physical", power=80, accuracy=100, pp=20)
+
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy)[0]
 
 class Earthquake(Move):
     def __init__(self):
