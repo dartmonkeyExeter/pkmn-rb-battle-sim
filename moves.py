@@ -117,18 +117,20 @@ def calculate_critical_hit(user_speed, direhitFocusEnergy, critHitRatio): # dire
 
     return random.randint(0, 255) < crit_roll
 
-def calculate_accuracy(accuracy, user_accuracy_stage, target_evasion_stage):
-    stage_multipliers = [3/9, 3/8, 3/7, 3/6, 3/5, 3/4, 3/3, 4/3, 5/3, 6/3, 7/3, 8/3, 9/3]
-    
-    user_accuracy_stage = max(-6, min(6, user_accuracy_stage))
-    target_evasion_stage = max(-6, min(6, target_evasion_stage))
-    
-    accuracy_multiplier = stage_multipliers[user_accuracy_stage + 6]
-    evasion_multiplier = stage_multipliers[target_evasion_stage + 6]
-    
-    final_accuracy = accuracy * (accuracy_multiplier / evasion_multiplier)
-    
-    return max(0, min(100, final_accuracy))
+def calculate_accuracy(accuracy, user_accuracy_stage, target_evasion_stage, target_invincible=False):
+    if not target_invincible:
+        stage_multipliers = [3/9, 3/8, 3/7, 3/6, 3/5, 3/4, 3/3, 4/3, 5/3, 6/3, 7/3, 8/3, 9/3]
+        
+        user_accuracy_stage = max(-6, min(6, user_accuracy_stage))
+        target_evasion_stage = max(-6, min(6, target_evasion_stage))
+        
+        accuracy_multiplier = stage_multipliers[user_accuracy_stage + 6]
+        evasion_multiplier = stage_multipliers[target_evasion_stage + 6]
+        
+        final_accuracy = accuracy * (accuracy_multiplier / evasion_multiplier)
+        
+        return max(0, min(100, final_accuracy))
+    return 0
 
 def stab_check(move_type, user_types):
     return move_type in user_types
@@ -171,14 +173,20 @@ def apply_stat_change(target, stat, change, enemy=False):
     stat_stage = stat_map.get(stat)
     if stat_stage:
         current_stage = getattr(target, stat_stage)
+        
+        # Check if the change would exceed the limit
+        if (change > 0 and current_stage >= 6) or (change < 0 and current_stage <= -6):
+            return "But, it failed!"
+        
         new_stage = current_stage + change
         new_stage = max(-6, min(new_stage, 6))  # Clamps between -6 and 6
         setattr(target, stat_stage, new_stage)
 
-        return f"{"Enemy " if enemy else ""}{target.nickname}'s {stat} {'rose' if change > 0 else 'fell'}!"
+        return f"{'Enemy ' if enemy else ''}{target.nickname}'s {stat} {'rose' if change > 0 else 'fell'}!"
+    
     return None
 
-def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=None, status_change=None, vol_status_change=None, status_target=None, vol_status_target=None, dot_turns=None, damage_override=None, self_damage=None):
+def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=None, status_change=None, vol_status_change=None, status_target=None, vol_status_target=None, dot_turns=None, damage_override=None, self_damage=None, target_invincible=False, additional_multiplier=1): # having target_invincible allows us to override the invincibility of moves like fly and dig
     """
     Handles the effect of a move, including damage calculation, stat changes, and status effects.
     
@@ -198,7 +206,7 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
     
     if move.power != 0 or damage_override is not None:
         # Accuracy check
-        if random.randint(0, 100) < calculate_accuracy(move.accuracy, user.accuracy_stage, target.evasion_stage):
+        if random.randint(0, 100) < calculate_accuracy(move.accuracy, user.accuracy_stage, target.evasion_stage, target_invincible):
             # Calculate damage (if applicable)
         
             crit = calculate_critical_hit(user.speed, user.crit_boost, 4 if move.crit_buff else 0.5)
@@ -207,7 +215,7 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
                 damage = damage_override
             else:
                 damage = calculate_damage(user.level, move.type, move.category, target.types, user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, move.power, 
-                                stab_check(move.type, user.types), crit, user.reflect, user.light_screen)
+                                stab_check(move.type, user.types), crit, user.reflect, user.light_screen) * additional_multiplier
             # Apply damage to target
             target.curr_hp -= damage
             return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname} used {move.name}!")
@@ -639,6 +647,12 @@ class Earthquake(Move):
     def __init__(self):
         super().__init__(name="Earthquake", type="ground", category="physical", power=100, accuracy=100, pp=10)
 
+    def effect(self, user, target, enemy):
+        if target.vol_status == 'dig':
+            return apply_move_effect(self, user, target, enemy, target_invincible=False, additional_multiplier=2)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
+
 class Eggbomb(Move):
     def __init__(self):
         super().__init__(name="Egg Bomb", type="normal", category="physical", power=100, accuracy=75, pp=10)
@@ -701,8 +715,10 @@ pp=30)
 
 class Growl(Move):
     def __init__(self):
-        super().__init__(name="Growl", type="normal", category="status", power=0, accuracy=100, 
-pp=40)
+        super().__init__(name="Growl", type="normal", category="status", power=0, accuracy=100, pp=40)
+
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, stat_changes={'attack': -1}, stat_target=target)[0]
 
 class Growth(Move):
     def __init__(self):
@@ -939,6 +955,9 @@ class Scratch(Move):
     def __init__(self):
         super().__init__(name="Scratch", type="normal", category="physical", power=40, accuracy=100, pp=35)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy)[0]
+
 class Screech(Move):
     def __init__(self):
         super().__init__(name="Screech", type="normal", category="status", power=0, accuracy=85, pp=40)
@@ -1071,9 +1090,15 @@ class Tackle(Move):
     def __init__(self):
         super().__init__(name="Tackle", type="normal", category="physical", power=40, accuracy=100, pp=35)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy)[0]
+
 class Tailwhip(Move):
     def __init__(self):
         super().__init__(name="Tail Whip", type="normal", category="status", power=0, accuracy=100, pp=30)
+
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, stat_changes={'defense': -1}, stat_target=target)[0]
 
 class Takedown(Move):
     def __init__(self):
