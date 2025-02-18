@@ -3,11 +3,13 @@ from moves import *
 
 pygame.init()
 scale = 4
-screen = pygame.display.set_mode((160 * scale, 144 * scale))
+HEIGHT, WIDTH = 144 * scale, 160 * scale
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Pokémon Red / Blue Battle System")
 clock = pygame.time.Clock()
 fps = 59.7275 # keep this mf accurate
 font = pygame.font.Font("assets/fonts/pkmnfl.ttf", 8 * scale)
+game_loop_idx = 0
 
 game_state = "battle"
 battle_state = "precutscene"
@@ -17,6 +19,10 @@ battle_index = 0
 battle_text_index = 0
 battle_mon_index = 0
 shownFirst = False
+
+trainer_music = pygame.mixer.music.load("assets/music/trainer_battle.mp3")
+# 9x10 grid
+
 
 class Pokemon():
     def __init__(self, dex_num, species, nickname, level, xp, type1, type2, hp, atk, defense, spec, speed, atk_iv, def_iv, speed_iv, spec_iv, moves, player_owned=False):
@@ -350,7 +356,7 @@ def trainer_battle_init(key_pressed=None):
 
             if scaling == "done":
                 opponent.party[0].battlesprite_draw()
-                pygame.time.wait(500)
+                pygame.time.delay(500)
                 battle_sub_state = "player_send_out_mon"
                 battle_mon_index = 0
                 battle_text_index = 0
@@ -381,7 +387,7 @@ def trainer_battle_init(key_pressed=None):
 
             if scaling == "done":
                 player.party[0].battlesprite_draw()
-                pygame.time.wait(500)
+                pygame.time.delay(500)
                 battle_state = "main"
                 battle_sub_state = "player_select"
                 battle_text_index = 0
@@ -430,20 +436,56 @@ def trainer_battle_main(key_pressed=None):
                 battle_sub_state = "player_select_move"
                 battle_text_index = 0
 
+def generate_spiral(width, height, cell_size):
+    grid = [[False] * (width // cell_size) for _ in range(height // cell_size)]
+    directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # Down, Right, Up, Left
+    x, y = 0, 0
+    dir_idx = 0
+    order = []
+    
+    for _ in range((width // cell_size) * (height // cell_size)):
+        order.append((x, y))
+        grid[y][x] = True
+        
+        nx, ny = x + directions[dir_idx][0], y + directions[dir_idx][1]
+        if 0 <= nx < len(grid[0]) and 0 <= ny < len(grid) and not grid[ny][nx]:
+            x, y = nx, ny
+        else:
+            dir_idx = (dir_idx + 1) % 4
+            x, y = x + directions[dir_idx][0], y + directions[dir_idx][1]
+    
+    return order
+
+order = generate_spiral(WIDTH, HEIGHT, 16 * scale)
+filled_squares = []
+
 def pre_battle_cutscene(idx):
     # fill screen with black squares that follow each other like snake, to the center
     # starting from the top left corner and going down
 
-    global screen, scale
+    global screen, scale, trainer_music, filled_squares, battle_state
 
-    # 12 squares per side
+    if idx == 1:
+        pygame.mixer.music.play(loops=-1)
+
+    try:
+        filled_squares.append(order.pop(0))
+    except IndexError:
+        pygame.time.delay(250)
+        battle_state = "init"
+        return "done"
+    
+    for square in filled_squares:
+        x, y = square
+        pygame.draw.rect(screen, (0, 0, 0), (x * 16 * scale, y * 16 * scale, 16 * scale, 16 * scale))
+
 
     
 
 def main():
     global screen, clock, fps, battle_state, battle_sub_state, turn_count, battle_index
     running = True
-    sq_idx = 0
+    game_loop_idx = 0
     while running:
         key = ""
         for event in pygame.event.get():
@@ -457,10 +499,12 @@ def main():
         screen.fill((248, 232, 248))
         
         if game_state == "battle":
+            game_loop_idx += 1
             if battle_state == "precutscene":
-                pre_battle_cutscene(sq_idx)
-                sq_idx += 1
-            if battle_state == "init":
+                if pre_battle_cutscene(game_loop_idx) == "done":
+                    game_loop_idx = 0
+            elif battle_state == "init":
+                if game_loop_idx == 1: pygame.time.delay(250)
                 trainer_battle_init(key)
 
         pygame.display.flip()
