@@ -10,7 +10,7 @@ fps = 59.7275 # keep this mf accurate
 font = pygame.font.Font("assets/fonts/pkmnfl.ttf", 8 * scale)
 
 game_state = "battle"
-battle_state = "init"
+battle_state = "precutscene"
 battle_sub_state = "init"
 turn_count = 0
 battle_index = 0
@@ -399,12 +399,51 @@ def trainer_battle_init(key_pressed=None):
     battle_index += 1
 
 def trainer_battle_main(key_pressed=None):
-    pass
+    
+    global battle_sub_state, player, opponent, player_init_battlepos, opponent_init_battlepos, turn_count, battle_index, battle_text_index, battle_mon_index, shownFirst 
+    
+    if battle_sub_state == "player_select":
+        opponent.party[0].battlesprite_draw()
+        player.party[0].battlesprite_draw()
+        main_textbox.draw()
+        player_healthbar.draw()
+        opponent_healthbar.draw()
+        battle_text_index += 1
 
+        if display_text(f"What will\n{player.party[0].species} do?", (8 * scale, 110 * scale), battle_text_index // 2) == "done":
+            continue_tri.draw()
+            if key_pressed == "enter":
+                battle_sub_state = "player_select_move"
+                battle_text_index = 0
+
+    elif battle_sub_state == "player_select_move":
+        opponent.party[0].battlesprite_draw()
+        player.party[0].battlesprite_draw()
+        main_textbox.draw()
+        player_healthbar.draw()
+        opponent_healthbar.draw()
+        battle_text_index += 1
+
+        if display_text(f"What will\n{player.party[0].species} do?", (8 * scale, 110 * scale), battle_text_index // 2) == "done":
+            continue_tri.draw()
+            if key_pressed == "enter":
+                battle_sub_state = "player_select_move"
+                battle_text_index = 0
+
+def pre_battle_cutscene(idx):
+    # fill screen with black squares that follow each other like snake, to the center
+    # starting from the top left corner and going down
+
+    global screen, scale
+
+    # 12 squares per side
+
+    
 
 def main():
     global screen, clock, fps, battle_state, battle_sub_state, turn_count, battle_index
     running = True
+    sq_idx = 0
     while running:
         key = ""
         for event in pygame.event.get():
@@ -415,10 +454,14 @@ def main():
                 if event.key == pygame.K_RETURN:
                     key = "enter"
 
-        screen.fill((248, 248, 248))
+        screen.fill((248, 232, 248))
         
-        if battle_state == "init":
-            trainer_battle_init(key)
+        if game_state == "battle":
+            if battle_state == "precutscene":
+                pre_battle_cutscene(sq_idx)
+                sq_idx += 1
+            if battle_state == "init":
+                trainer_battle_init(key)
 
         pygame.display.flip()
         clock.tick(fps)
