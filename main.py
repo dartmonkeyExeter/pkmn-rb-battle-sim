@@ -2,7 +2,7 @@ import pygame, sqlite3, math, copy
 from moves import *
 
 pygame.init()
-scale = 1
+scale = 4
 screen = pygame.display.set_mode((160 * scale, 144 * scale))
 pygame.display.set_caption("Pokémon Red / Blue Battle System")
 clock = pygame.time.Clock()
