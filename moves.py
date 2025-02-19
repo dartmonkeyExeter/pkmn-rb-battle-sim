@@ -104,6 +104,8 @@ def calculate_damage(user_level, attack_type, attack_cat, defender_types, attack
     modified_dmg *= random_factor
     modified_dmg //= 255
     
+    if critical:
+        modified_dmg *= 2
     return modified_dmg
 
 def calculate_critical_hit(user_speed, direhitFocusEnergy, critHitRatio): # direhitFocusEnergy is a boolean, and im fixing it from the original where it reduces instead of increases
@@ -141,11 +143,11 @@ def check_effectiveness(move_type, target):
         if type is None:
             continue
         try:
-            if CHART[move_type][type] == 0:
+            if CHART[move_type.lower()][type.lower()] == 0:
                 final_effectiveness *= 0
-            elif CHART[move_type][type] == 0.5:
+            elif CHART[move_type.lower()][type.lower()] == 0.5:
                 final_effectiveness *= 0.5
-            elif CHART[move_type][type] == 2:
+            elif CHART[move_type.lower()][type.lower()] == 2:
                 final_effectiveness *= 2
         except KeyError:
             # If the type isn't in the chart, it's neutral
@@ -171,153 +173,104 @@ def apply_stat_change(target, stat, change, enemy=False):
     }
     
     stat_stage = stat_map.get(stat)
-    if stat_stage:
+    if stat_stage and "mist" not in target.owner_reference.field_move:
         current_stage = getattr(target, stat_stage)
         
         # Check if the change would exceed the limit
         if (change > 0 and current_stage >= 6) or (change < 0 and current_stage <= -6):
-            return "But, it failed!"
+            return "But it failed!"
         
         new_stage = current_stage + change
         new_stage = max(-6, min(new_stage, 6))  # Clamps between -6 and 6
         setattr(target, stat_stage, new_stage)
 
-        return f"{'Enemy ' if enemy else ''}{target.nickname}'s {stat} {'rose' if change > 0 else 'fell'}!"
+        return f"{'Enemy ' if enemy else ''}{target.nickname}'s\n{stat} {'rose' if change > 0 else 'fell'}!"
     
     return None
 
-def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=None, status_change=None, vol_status_change=None, status_target=None, vol_status_target=None, dot_turns=None, damage_override=None, self_damage=None, target_invincible=False, additional_multiplier=1): # having target_invincible allows us to override the invincibility of moves like fly and dig
-    """
-    Handles the effect of a move, including damage calculation, stat changes, and status effects.
-    
-    :param move: The move being used (should contain type, category, power, etc.)
-    :param user: The user of the move (should contain stats like HP, attack, etc.)
-    :param target: The target of the move (should contain stats like HP, types, etc.)
-    :param stat_changes: Dictionary of stat changes (e.g., {'atk': -1, 'def': 1})
-    :param status_change: A single status change (e.g., {'poisoned': True})
-    :param vol_status_change: A single volatile status change (e.g., {'confusion': True})
-    
-    :return: List of messages describing the result of the move (e.g., "hit", "super effective", "lowered attack", etc.)
-    """
+def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=None, 
+                      status_change=None, vol_status_change=None, status_target=None, 
+                      vol_status_target=None, dot_turns=None, damage_override=None, 
+                      self_damage=None, target_invincible=None, additional_multiplier=1):
+
     return_messages = []
 
     # Reduce PP
     move.curr_pp -= 1
     
+    # Ensure invincibility logic is handled
+    if target_invincible is None:
+        target_invincible = target.invincible
+
+    # Check if the move deals damage
+    damage = None  # Initialize damage variable
     if move.power != 0 or damage_override is not None:
         # Accuracy check
         if random.randint(0, 100) < calculate_accuracy(move.accuracy, user.accuracy_stage, target.evasion_stage, target_invincible):
-            # Calculate damage (if applicable)
-        
+            
+            # Determine critical hit
             crit = calculate_critical_hit(user.speed, user.crit_boost, 4 if move.crit_buff else 0.5)
             
+            # Calculate damage
             if damage_override is not None:
                 damage = damage_override
             else:
-                damage = calculate_damage(user.level, move.type, move.category, target.types, user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, move.power, 
-                                stab_check(move.type, user.types), crit, user.reflect, user.light_screen) * additional_multiplier
-            # Apply damage to target
-            target.curr_hp -= damage
-            return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname} used {move.name}!")
-            # Check for critical hit
+                damage = calculate_damage(user.level, move.type, move.category, target.types, 
+                                          user.spatk, user.spatk_stage, target.spdef, target.spdef_stage, 
+                                          move.power, stab_check(move.type, user.types), crit, 
+                                          "reflect" in user.owner_reference.field_move, 
+                                          "lightscreen" in user.owner_reference.field_move) * additional_multiplier
+            
+            # Apply damage
+            print(target.pending_hp)
+            target.pending_hp -= damage  # Ensure this modifies the correct target object
+            print(target.pending_hp)
+            return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}\nused {move.name}!")
+
             if crit:
                 return_messages.append("Critical hit!")
-            
 
+            # Apply recoil damage (if any)
             if self_damage:
-                user.curr_hp -= self_damage
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname}'s hit with recoil!")
+                user.pending_hp -= self_damage
+                return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname} took recoil damage!")
 
+            # Apply damage over time (DoT) effect
             if dot_turns:
                 target.dot_turns = dot_turns
-            
-            # Apply stat changes (if any)
-            if stat_changes:
-                for stat, change in stat_changes.items():
-                    stat_message = apply_stat_change(stat_target, stat, change, True if stat_target == target else False)
-                    if stat_message:
-                        return_messages.append(stat_message)
-            
-            # Apply status change (if any)
-            if status_change:
-                status = list(status_change.keys())[0]  # Get the status type (e.g., 'poisoned')
-                if status == 'poisoned' and status_target is None:  # Only apply if target isn't already poisoned
-                    status_target = 'poisoned'
-                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now poisoned!")
-                if status == 'paralyzed' and status_target is None:
-                    status_target = 'paralyzed'
-                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now paralyzed!")
-                if status == 'burned' and status_target is None:
-                    status_target = 'burned'
-                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now burned!")
-                if status == 'frozen' and status_target is None:
-                    status_target = 'frozen'
-                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now frozen!")
-                if status == 'sleep' and status_target is None:
-                    status_target = 'sleep'
-                    return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now asleep!")
 
-            
-            # Apply volatile status change (if any)
-            if vol_status_change:
-                vol_status = list(vol_status_change.keys())[0]  # Get the volatile status type (e.g., 'confusion')
-                if vol_status not in vol_status_target.vol_status:  # Only apply if it's not already in the list
-                    vol_status_target.vol_status.append(vol_status)
-                    return_messages.append(f"{"Enemy " if enemy is True else ""}{vol_status_target.nickname} is now affected by {vol_status}!")
-            
-            # Effectiveness check
-            effectiveness = check_effectiveness(move.type, target)
-            return_messages.append(effectiveness)
-            
         else:
-            return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname}'s attack missed!")
+            return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}'s attack missed!")
+
     else:
-        return_messages.append(f"{"Enemy " if enemy is True else ""}{user.nickname} used {move.name}!")
-        if stat_changes:
-            for stat, change in stat_changes.items():
-                stat_message = apply_stat_change(stat_target, stat, change, True if stat_target == target else False)
-                if stat_message:
-                    return_messages.append(stat_message)
-        
-        # Apply status change (if any)
-        if status_change:
-            status = list(status_change.keys())[0]  # Get the status type (e.g., 'poisoned')
-            if status == 'poisoned' and status_target is None:  # Only apply if target isn't already poisoned
-                status_target = 'poisoned'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now poisoned!")
-            if status == 'paralyzed' and status_target is None:
-                status_target = 'paralyzed'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now paralyzed!")
-            if status == 'burned' and status_target is None:
-                status_target = 'burned'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now burned!")
-            if status == 'frozen' and status_target is None:
-                status_target = 'frozen'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now frozen!")
-            if status == 'sleep' and status_target is None:
-                status_target = 'sleep'
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{status_target.nickname} is now asleep!")
+        return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}\nused {move.name}!")
 
-        
-        # Apply volatile status change (if any)
-        if vol_status_change:
-            vol_status = list(vol_status_change.keys())[0]  # Get the volatile status type (e.g., 'confusion')
-            if vol_status not in vol_status_target.vol_status:  # Only apply if it's not already in the list
-                vol_status_target.vol_status.append(vol_status)
-                return_messages.append(f"{"Enemy " if enemy is True else ""}{vol_status_target.nickname} is now affected by {vol_status}!")
-    try:
-        return return_messages, damage
-    except UnboundLocalError:
-        return return_messages, None
-    
-class Absorb(Move):
-    def __init__(self):
-        super().__init__(name="Absorb", type="grass", category="special", power=20, accuracy=100, pp=25)
+    # Apply stat changes (if any)
+    if stat_changes:
+        for stat, change in stat_changes.items():
+            stat_message = apply_stat_change(stat_target, stat, change, stat_target == target)
+            if stat_message:
+                return_messages.append(stat_message)
 
-    def effect(self, user, target, enemy):
-        msgs, dmg = apply_move_effect(self, user, target, enemy)
-        user.curr_hp += dmg // 2
-        return msgs
+    # Apply status effect (if any)
+    if status_change and status_target:
+        status_name = next(iter(status_change))
+        if getattr(status_target, status_name, None) is None:
+            setattr(status_target, status_name, True)
+            return_messages.append(f"{'Enemy ' if enemy else ''}{status_target.nickname} is now {status_name}!")
+
+    # Apply volatile status (if any)
+    if vol_status_change and vol_status_target:
+        vol_status_name = next(iter(vol_status_change))
+        if vol_status_name not in vol_status_target.vol_status:
+            vol_status_target.vol_status.append(vol_status_name)
+            return_messages.append(f"{'Enemy ' if enemy else ''}{vol_status_target.nickname} is now affected by {vol_status_name}!")
+
+    # Check effectiveness
+    effectiveness_message = check_effectiveness(move.type, target)
+    return_messages.append(effectiveness_message)
+
+    return return_messages, damage  # Damage is now always returned properly
 
 class Acid(Move):
     def __init__(self):
@@ -385,6 +338,13 @@ class Bide(Move):
     def effect(self, user, target, enemy):
         user.turn_count = random.randint(2,3)
         return apply_move_effect(self, user, target, enemy, vol_status_change={'bide': True}, vol_status_target=user)[0]
+    
+    def effect_end(self, user, target, enemy):
+        msgs, dmg = apply_move_effect(self, user, target, enemy, damage_override=user.collected_dmg * 2)
+        if dmg == 0:
+            return [f"{"Enemy " if enemy is True else ""}{user.nickname} unleashed energy!", "But it failed!"]
+        else:
+            return msgs
 
 class Bind(Move):
     def __init__(self):
@@ -562,7 +522,13 @@ class Dig(Move):
 
     def effect(self, user, target, enemy):
         user.vol_status.append('dig')
+        user.invincible = True
         return [f"{"Enemy " if enemy is True else ""}{user.nickname} burrowed underground!"]
+    
+    def effect_end(self, user, target, enemy):
+        user.vol_status.remove('dig')
+        user.invincible = False
+        return apply_move_effect(self, user, target, enemy, target_invincible=False)[0]
 
 class Disable(Move):
     def __init__(self):
@@ -631,10 +597,10 @@ class Dreameater(Move):
     def effect(self, user, target, enemy):
         if 'sleep' in target.vol_status:
             msgs, dmg = apply_move_effect(self, user, target, enemy)
-            user.curr_hp += dmg // 2
+            user.pending_hp += dmg // 2
             return msgs
         else:
-            return [f"{"Enemy" if enemy is True else ""}{target.nickname} used {self.name}!", "But it failed!"]
+            return [f"{"Enemy" if enemy is True else ""}{target.nickname}\nused {self.name}!", "But it failed!"]
 
 class Drillpeck(Move):
     def __init__(self):
@@ -659,8 +625,14 @@ class Eggbomb(Move):
 
 class Ember(Move):
     def __init__(self):
-        super().__init__(name="Ember", type="fire", category="special", power=40, accuracy=100, 
-pp=25)
+        super().__init__(name="Ember", type="fire", category="special", power=40, accuracy=100, pp=25)
+
+    def effect(self, user, target, enemy):
+        if random.randint(0, 255) < 77:
+            return apply_move_effect(self, user, target, enemy, status_change={'burned': True}, status_target=target)[0]
+        else:
+            return apply_move_effect(self, user, target, enemy)[0]
+        
 
 class Explosion(Move):
     def __init__(self):
@@ -693,8 +665,17 @@ pp=20)
 
 class Fly(Move):
     def __init__(self):
-        super().__init__(name="Fly", type="flying", category="physical", power=90, accuracy=95, 
-pp=15)
+        super().__init__(name="Fly", type="flying", category="physical", power=90, accuracy=95, pp=15)
+
+    def effect(self, user, target, enemy):
+        user.vol_status.append('fly')
+        user.invincible = True
+        return [f"{"Enemy " if enemy is True else ""}{user.nickname} flew up high!"]
+    
+    def effect_end(self, user, target, enemy):
+        user.vol_status.remove('fly')
+        user.invincible = False
+        return apply_move_effect(self, user, target, enemy, target_invincible=False)[0]
 
 class Focusenergy(Move):
     def __init__(self):
@@ -763,6 +744,9 @@ class Hyperbeam(Move):
     def __init__(self):
         super().__init__(name="Hyper Beam", type="normal", category="special", power=150, accuracy=90, pp=5)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'recharge': True}, vol_status_target=user)[0]
+
 class Hyperfang(Move):
     def __init__(self):
         super().__init__(name="Hyper Fang", type="normal", category="physical", power=80, accuracy=90, pp=15)
@@ -811,6 +795,11 @@ class Lightscreen(Move):
     def __init__(self):
         super().__init__(name="Light Screen", type="psychic", category="status", power=0, accuracy=0, pp=30)
 
+    def effect(self, user, target, enemy):
+        user.owner_reference.field_move.append('lightscreen')
+        user.owner_reference.field_move_turns.append(5)
+        return apply_move_effect(self, user, target, enemy)[0]
+
 class Lovelykiss(Move):
     def __init__(self):
         super().__init__(name="Lovely Kiss", type="normal", category="status", power=0, accuracy=75, pp=10)
@@ -854,6 +843,12 @@ class Mirrormove(Move):
 class Mist(Move):
     def __init__(self):
         super().__init__(name="Mist", type="ice", category="status", power=0, accuracy=0, pp=30)
+
+    def effect(self, user, target, enemy):
+        user.owner_reference.field_move.append('mist')
+        user.owner_reference.field_move_turns.append(5)
+        return apply_move_effect(self, user, target, enemy)[0]
+    
 class Nightshade(Move):
     def __init__(self):
         super().__init__(name="Night Shade", type="ghost", category="special", power=0, accuracy=100, pp=15)
@@ -910,6 +905,9 @@ class Rage(Move):
     def __init__(self):
         super().__init__(name="Rage", type="normal", category="physical", power=20, accuracy=100, pp=20)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'rage': True}, vol_status_target=user)[0]
+
 class Razorleaf(Move):
     def __init__(self):
         super().__init__(name="Razor Leaf", type="grass", category="physical", power=55, accuracy=95, pp=25)
@@ -927,9 +925,20 @@ class Reflect(Move):
     def __init__(self):
         super().__init__(name="Reflect", type="psychic", category="status", power=0, accuracy=0, pp=20)
 
+    def effect(self, user, target, enemy):
+        user.owner_reference.field_move.append('reflect')
+        user.owner_reference.field_move_turns.append(5)
+        return apply_move_effect(self, user, target, enemy)[0]
+
 class Rest(Move):
     def __init__(self):
         super().__init__(name="Rest", type="psychic", category="status", power=0, accuracy=0, pp=5)
+
+    def effect(self, user, target, enemy):
+        user.pending_hp = user.max_hp
+        user.status = None
+        user.turn_count = 2
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'rest': True}, vol_status_target=user)[0]
 
 class Roar(Move):
     def __init__(self):
