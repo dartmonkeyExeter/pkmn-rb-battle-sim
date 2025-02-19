@@ -12,6 +12,7 @@ class Move:
         self.return_messages = []
         self.disabled = False
         self.crit_buff = False
+        self.tags = []
 
     def __repr__(self):
         return f"{self.__class__.__name__}(Type: {self.type}, Power: {self.power}, Accuracy: {self.accuracy}, PP: {self.pp})"
@@ -336,8 +337,7 @@ class Bide(Move):
         super().__init__(name="Bide", type="normal", category="physical", power=0, accuracy=0, pp=10)
 
     def effect(self, user, target, enemy):
-        user.turn_count = random.randint(2,3)
-        return apply_move_effect(self, user, target, enemy, vol_status_change={'bide': True}, vol_status_target=user)[0]
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'bide': random.randint(2,3)}, vol_status_target=user)[0]
     
     def effect_end(self, user, target, enemy):
         msgs, dmg = apply_move_effect(self, user, target, enemy, damage_override=user.collected_dmg * 2)
@@ -351,7 +351,7 @@ class Bind(Move):
         super().__init__(name="Bind", type="normal", category="physical", power=15, accuracy=85, pp=20)
 
     def effect(self, user, target, enemy):
-        return apply_move_effect(self, user, target, enemy, vol_status_change={'bind': True}, vol_status_target=target, dot_turns=random.randint(4, 5))[0]
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'bind': random.randint(4, 5)}, vol_status_target=target)[0]
 
 class Bite(Move):
     def __init__(self):
@@ -429,8 +429,7 @@ class Clamp(Move):
         super().__init__(name="Clamp", type="water", category="physical", power=35, accuracy=85, pp=15)
 
     def effect(self, user, target, enemy):
-        rand = random.choice([2, 2, 2, 3, 3, 3, 4, 5])
-        return apply_move_effect(self, user, target, enemy, vol_status_change={'clamp': True}, vol_status_target=target, dot_turns=rand)[0]
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'clamp': random.choice([2, 2, 2, 3, 3, 3, 4, 5])}, vol_status_target=target, dot_turns=rand)[0]
 
 class Cometpunch(Move):
     def __init__(self):
@@ -448,7 +447,7 @@ class Confuseray(Move):
         super().__init__(name="Confuse Ray", type="ghost", category="status", power=0, accuracy=100, pp=10)
 
     def effect(self, user, target, enemy):
-        return apply_move_effect(self, user, target, enemy, vol_status_change={'confusion': True}, vol_status_target=target)[0]
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'confusion': random.randint(1, 4)}, vol_status_target=target)[0]
 
 class Confusion(Move):
     def __init__(self):
@@ -456,7 +455,7 @@ class Confusion(Move):
 
     def effect(self, user, target, enemy):
         if random.randint(0, 255) < 33:
-            return apply_move_effect(self, user, target, enemy, status_change={'confusion': True}, status_target=target)[0]
+            return apply_move_effect(self, user, target, enemy, vol_status_change={'confusion': random.randint(1, 4)}, vol_status_target=target)[0]
         else:
             return apply_move_effect(self, user, target, enemy)[0]
 
@@ -745,7 +744,7 @@ class Hyperbeam(Move):
         super().__init__(name="Hyper Beam", type="normal", category="special", power=150, accuracy=90, pp=5)
 
     def effect(self, user, target, enemy):
-        return apply_move_effect(self, user, target, enemy, vol_status_change={'recharge': True}, vol_status_target=user)[0]
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'recharge': 1}, vol_status_target=user)[0]
 
 class Hyperfang(Move):
     def __init__(self):
@@ -900,13 +899,17 @@ class Psywave(Move):
 class Quickattack(Move):
     def __init__(self):
         super().__init__(name="Quick Attack", type="normal", category="physical", power=40, accuracy=100, pp=30)
+        self.tags.append('priority')
+
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy)[0]
 
 class Rage(Move):
     def __init__(self):
         super().__init__(name="Rage", type="normal", category="physical", power=20, accuracy=100, pp=20)
 
     def effect(self, user, target, enemy):
-        return apply_move_effect(self, user, target, enemy, vol_status_change={'rage': True}, vol_status_target=user)[0]
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'rage': 1}, vol_status_target=user, stat_changes={'attack': 1}, stat_target=user)[0]
 
 class Razorleaf(Move):
     def __init__(self):
@@ -938,7 +941,7 @@ class Rest(Move):
         user.pending_hp = user.max_hp
         user.status = None
         user.turn_count = 2
-        return apply_move_effect(self, user, target, enemy, vol_status_change={'rest': True}, vol_status_target=user)[0]
+        return apply_move_effect(self, user, target, enemy, vol_status_change={'rest': 2}, vol_status_target=user)[0]
 
 class Roar(Move):
     def __init__(self):
