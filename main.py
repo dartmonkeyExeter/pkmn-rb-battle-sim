@@ -255,24 +255,26 @@ class SwitchSelect(UIelement):
 
         # draw the level
         level_surface = font.render(f"{self.pokemon.level}", True, (0, 0, 0))
-        screen.blit(level_surface, (self.pos[0] + 112 * scale, self.pos[1] - 2 * scale))
+        screen.blit(level_surface, (self.pos[0] + 112 * scale, self.pos[1] - 1 * scale))
 
         # draw the hp / max hp
         hp_surface = font.render(f"{int(self.pokemon.curr_hp)}/{self.pokemon.max_hp}", True, (0, 0, 0))
-        screen.blit(hp_surface, (self.pos[0] + 96 * scale, self.pos[1] + 4 * scale))
+        screen.blit(hp_surface, (self.pos[0] + 112 * scale, self.pos[1] + 6 * scale))
 
         #draw hp bar
         health_percentage = self.pokemon.curr_hp / self.pokemon.max_hp
         health_bar = pygame.Surface((health_percentage * 48 * scale, 2 * scale))
         health_bar.fill((72, 160, 88))
 
-        screen.blit(health_bar, (self.pos[0] + 24 * scale, self.pos[1] + 11 * scale))
+        screen.blit(health_bar, (self.pos[0] + 48 * scale, self.pos[1] + 11 * scale))
 
         #draw fnt if fainted
         if self.pokemon.curr_hp <= 0:
             fnt_surface = font.render("FNT", True, (0, 0, 0))
             screen.blit(fnt_surface, (self.pos[0] + 48 * scale, self.pos[1] - 9 * scale))
 
+# offset of hp / max hp based on how many digits the hp has
+hp_offset = {}
 switches = []
 main_textbox = UIelement(pygame.image.load("assets/ui/battle/textbox.png"), (0, 96 * scale))
 continue_tri = UIelement(pygame.image.load("assets/ui/battle/continue.png"), (142 * scale, 130 * scale))
@@ -314,7 +316,7 @@ mewtwo = Pokemon(150, "MEWTWO", "MEWTWO", 70, 0, "PSYCHIC", None, 106, 110, 90, 
 squirtle = Pokemon(squirtle_data[0], squirtle_data[1], "SQUIRTLE", 5, 0, squirtle_data[2], squirtle_data[3], squirtle_data[12], squirtle_data[13], squirtle_data[14], squirtle_data[15], squirtle_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Watergun()])
 bulbasaur = Pokemon(bulbasaur_data[0], bulbasaur_data[1], "BULBASAUR", 5, 0,bulbasaur_data[2], bulbasaur_data[3], bulbasaur_data[12], bulbasaur_data[13], bulbasaur_data[14], bulbasaur_data[15], 140, random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Growl(), Tackle()])
 
-player = Trainer("RED", [charmander], pygame.image.load(f"assets/trainers/red.png"), True)
+player = Trainer("RED", [charmander, mewtwo], pygame.image.load(f"assets/trainers/red.png"), True)
 blue = Trainer("BLUE", [squirtle], pygame.image.load(f"assets/trainers/blue.png"), ai_level=0)
 PLAYER_INIT_BATTLEPOS = [160 * scale, 40 * scale]
 OPPONENT_INIT_BATTLEPOS = [-50 * scale, 0 * scale]
@@ -858,12 +860,13 @@ def trainer_battle_main(opponent, key_pressed=None):
         display_text(f"{player.current_pokemon.species} fainted!", (8 * scale, 110 * scale), battle_text_index // 2)
 
     elif battle_sub_state == "player_choose_mon":
+        battle_text_index += 1
         main_textbox.draw()
 
         for switch in switches:
             switch.draw()
 
-        display_text("Bring out which\POKéMON?", (8 * scale, 110 * scale), battle_text_index // 2)
+        display_text("Bring out which\nPOKéMON?", (8 * scale, 110 * scale), battle_text_index // 2)
 
 
     elif battle_sub_state == "player_run":
