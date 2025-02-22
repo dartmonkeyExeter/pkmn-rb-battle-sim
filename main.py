@@ -46,6 +46,7 @@ speed_stage_multipliers = {
 who_went_first = None
 half_turn_done = False
 switch_pkmn_text = "Bring out which\nPOKéMON?"
+death_switch = False
 
 trainer_music = pygame.mixer.music.load("assets/music/trainer_battle.mp3")
 # 9x10 grid
@@ -320,14 +321,14 @@ conn.close()
 # create the pokemon objects
 # hp starts at index 12
 
-charmander = Pokemon(charmander_data[0], charmander_data[1], "CHARMANDER", 1, 0, charmander_data[2], charmander_data[3], charmander_data[12], charmander_data[13], charmander_data[14], charmander_data[15], charmander_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Scratch(), Growl(), Quickattack()], True)
+charmander = Pokemon(charmander_data[0], charmander_data[1], "CHARMANDER", 999, 0, charmander_data[2], charmander_data[3], charmander_data[12], charmander_data[13], charmander_data[14], charmander_data[15], charmander_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Scratch(), Growl(), Quickattack()], True)
 mewtwo = Pokemon(150, "MEWTWO", "MEWTWO", 70, 0, "PSYCHIC", None, 106, 110, 90, 154, 130, 15, 15, 15, 15, [Tackle(), Growl(), Quickattack()], True)
 
 squirtle = Pokemon(squirtle_data[0], squirtle_data[1], "SQUIRTLE", 5, 0, squirtle_data[2], squirtle_data[3], squirtle_data[12], squirtle_data[13], squirtle_data[14], squirtle_data[15], squirtle_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Watergun()])
 bulbasaur = Pokemon(bulbasaur_data[0], bulbasaur_data[1], "BULBASAUR", 5, 0,bulbasaur_data[2], bulbasaur_data[3], bulbasaur_data[12], bulbasaur_data[13], bulbasaur_data[14], bulbasaur_data[15], 140, random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Growl(), Tackle()])
 
-player = Trainer("RED", [charmander, mewtwo], pygame.image.load(f"assets/trainers/red.png"), True)
-blue = Trainer("BLUE", [squirtle], pygame.image.load(f"assets/trainers/blue.png"), ai_level=0)
+player = Trainer("RED", [charmander], pygame.image.load(f"assets/trainers/red.png"), True)
+blue = Trainer("BLUE", [squirtle, bulbasaur], pygame.image.load(f"assets/trainers/blue.png"), ai_level=0)
 PLAYER_INIT_BATTLEPOS = [160 * scale, 40 * scale]
 OPPONENT_INIT_BATTLEPOS = [-50 * scale, 0 * scale]
 
@@ -401,8 +402,7 @@ def pre_battle_cutscene(idx):
     global screen, scale, trainer_music, filled_squares, battle_state
 
     if idx == 1:
-        pass
-        #pygame.mixer.music.play(loops=-1)
+        pygame.mixer.music.play(loops=-1)
 
     try:
         filled_squares.append(order.pop(0))
@@ -613,9 +613,7 @@ def trainer_battle_init(opponent, key_pressed=None):
 
 def trainer_battle_main(opponent, key_pressed=None):
     
-    global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text
-
-    print(who_went_first)
+    global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text, death_switch
 
     if battle_sub_state == "player_select":
         half_turn_done = False
@@ -643,7 +641,10 @@ def trainer_battle_main(opponent, key_pressed=None):
                 battle_sub_state = "player_select_move"
                 current_hover = 0
             elif current_hover == 1:
-                pass
+                battle_sub_state = "player_choose_mon"
+                shownFirst = False
+                death_switch = False
+                current_hover = 0
             elif current_hover == 2:
                 pass
             elif current_hover == 3:
@@ -674,48 +675,36 @@ def trainer_battle_main(opponent, key_pressed=None):
             current_hover = 0
 
     elif battle_sub_state == "opponent_select_move":
-        player.current_pokemon.battlesprite_draw()
-        opponent.current_pokemon.battlesprite_draw()
-        main_textbox.draw()
-        player_healthbar.draw()
-        opponent_healthbar.draw()
+        # Draw battle elements
+        for element in [player.current_pokemon.battlesprite_draw, opponent.current_pokemon.battlesprite_draw, 
+                        main_textbox.draw, player_healthbar.draw, opponent_healthbar.draw]:
+            element()
 
-        # ai, only needs to be called once
+        # AI selects a move if needed
         if opponent.ai_level == 0:
-            opponent_intended_action = opponent.current_pokemon.moves[random.randint(0, len(opponent.current_pokemon.moves) - 1)]
+            opponent_intended_action = random.choice(opponent.current_pokemon.moves)
 
-        player_mon_speed = player.current_pokemon.speed * speed_stage_multipliers[player.current_pokemon.speed_stage]
-        opponent_mon_speed = opponent.current_pokemon.speed * speed_stage_multipliers[opponent.current_pokemon.speed_stage]
+        # Calculate speed with paralysis effect
+        def get_adjusted_speed(pokemon):
+            speed = pokemon.speed * speed_stage_multipliers[pokemon.speed_stage]
+            return speed // 4 if pokemon.status == "paralyzed" else speed
 
-        player_mon_speed = player_mon_speed // 4 if player.current_pokemon.status == "paralyzed" else player_mon_speed
-        opponent_mon_speed = opponent_mon_speed // 4 if opponent.current_pokemon.status == "paralyzed" else opponent_mon_speed
+        player_mon_speed = get_adjusted_speed(player.current_pokemon)
+        opponent_mon_speed = get_adjusted_speed(opponent.current_pokemon)
 
-        if "priority" in player_intended_action.tags and "priority" in opponent_intended_action.tags:
-            if player_mon_speed > opponent_mon_speed:
-                who_went_first = "player"
-                battle_sub_state = "perform_player_actions"
-            elif player_mon_speed < opponent_mon_speed:
-                who_went_first = "opponent"
-                battle_sub_state = "perform_opponent_actions"
-            elif player_mon_speed == opponent_mon_speed:
-                who_went_first = "player"
-                battle_sub_state = "perform_player_actions"
-        elif "priority" in player_intended_action.tags:
-            who_went_first = "player"
-            battle_sub_state = "perform_player_actions"
-        elif "priority" in opponent_intended_action.tags:
-            who_went_first = "opponent"
-            battle_sub_state = "perform_opponent_actions"
-        elif player_mon_speed > opponent_mon_speed:
-            who_went_first = "player"
-            battle_sub_state = "perform_player_actions"
-        elif player_mon_speed < opponent_mon_speed:
-            who_went_first = "opponent"
-            battle_sub_state = "perform_opponent_actions"
-        elif player_mon_speed == opponent_mon_speed:
-            who_went_first = "player"
-            battle_sub_state = "perform_player_actions"
-        
+        if player_intended_action:
+            player_priority = "priority" in player_intended_action.tags
+            opponent_priority = "priority" in opponent_intended_action.tags
+
+            if player_priority != opponent_priority:
+                who_went_first = "player" if player_priority else "opponent"
+            else:
+                who_went_first = "player" if player_mon_speed >= opponent_mon_speed else "opponent"
+
+            battle_sub_state = f"perform_{who_went_first}_actions"
+        else:
+            who_went_first, battle_sub_state = "opponent", "perform_opponent_actions"
+            
     elif battle_sub_state == "perform_player_actions":
         opponent.current_pokemon.battlesprite_draw()
         player.current_pokemon.battlesprite_draw()
@@ -725,7 +714,6 @@ def trainer_battle_main(opponent, key_pressed=None):
 
         if player_intended_action:
             msgs = player_intended_action.effect(player.current_pokemon, opponent.current_pokemon, False)
-            player_intended_action = None
             msgs_index = 0
             battle_sub_state = "display_msgs"
             msgs = [msg for msg in msgs if msg != "" and msg != None]
@@ -739,7 +727,6 @@ def trainer_battle_main(opponent, key_pressed=None):
 
         if opponent_intended_action:
             msgs = opponent_intended_action.effect(opponent.current_pokemon, player.current_pokemon, True)
-            opponent_intended_action = None
             msgs_index = 0
             battle_sub_state = "display_msgs"
             msgs = [msg for msg in msgs if msg != "" and msg != None]
@@ -759,44 +746,38 @@ def trainer_battle_main(opponent, key_pressed=None):
                 msgs_index += 1
                 pygame.time.delay(500)
             
-            if msgs_index + 1 == len(msgs) and opponent.current_pokemon.pending_hp == 0 and player.current_pokemon.pending_hp == 0: # CODE HERE NEXT PLE>ASE TAHNKS AARON
+            if msgs_index + 1 == len(msgs) and opponent.current_pokemon.pending_hp == 0 and player.current_pokemon.pending_hp == 0:
                 continue_tri.draw()
-                if key_pressed == "enter" and half_turn_done:
-                    half_turn_done = False
-                    if who_went_first == "player":
-                        if death_check(opponent.current_pokemon):
-                            battle_sub_state = "opponent_withdraw_mon"
-                            shownFirst = False
-                            battle_mon_index = 0
-                        else:
-                            battle_sub_state = "perform_opponent_actions"
-                    elif who_went_first == "opponent":
-                        if death_check(player.current_pokemon):
+                
+                if key_pressed == "enter":
+                    half_turn_done = not half_turn_done
+                    first, second = ("player", "opponent") if who_went_first == "player" else ("opponent", "player")
+
+                    if death_check(player.current_pokemon):
+                        # check that player has atleast one pokemon left
+                        flag = False
+                        for pokemon in player.party:
+                            if not death_check(pokemon):
+                                flag = True
+                                break
+                        if flag:    
                             battle_sub_state = "player_withdraw_mon"
-                            shownFirst = False
-                            battle_mon_index = 0
                         else:
-                            battle_sub_state = "perform_player_actions"
+                            battle_sub_state = "opponent_wins"
+                    elif death_check(opponent.current_pokemon):
+                        battle_sub_state = "opponent_withdraw_mon"
+                    else:
+                        if player_intended_action:
+                            battle_sub_state = f"perform_{second}_actions" if half_turn_done else f"perform_{first}_actions"
+                        else:
+                            battle_sub_state = "player_select"
+                    shownFirst = False
+                    battle_mon_index = 0
                     msgs_index = 0
                     battle_text_index = 0
-                elif key_pressed == "enter":
-                    half_turn_done = True
-                    if who_went_first == "player":
-                        if death_check(opponent.current_pokemon):
-                            battle_sub_state = "opponent_withdraw_mon"
-                            shownFirst = False
-                            battle_mon_index = 0
-                        else:
-                            battle_sub_state = "perform_opponent_actions"
-                    elif who_went_first == "opponent":
-                        if death_check(player.current_pokemon):
-                            battle_sub_state = "player_withdraw_mon"
-                            shownFirst = False
-                            battle_mon_index = 0
-                        else:
-                            battle_sub_state = "perform_player_actions"
-                    msgs_index = 0
-                    battle_text_index = 0
+                    if not half_turn_done:
+                        player_intended_action = None
+                        opponent_intended_action = None
 
     elif battle_sub_state == "opponent_withdraw_mon":
         battle_text_index += 1
@@ -818,6 +799,7 @@ def trainer_battle_main(opponent, key_pressed=None):
             battle_sub_state = "opponent_choose_mon"
             battle_mon_index = 0
             battle_text_index = 0
+            pygame.time.delay(1000)
 
         display_text(f"{opponent.current_pokemon.species} fainted!", (8 * scale, 110 * scale), battle_text_index // 2)
 
@@ -836,6 +818,10 @@ def trainer_battle_main(opponent, key_pressed=None):
         
         if battle_sub_state != "opponent_send_out_mon":
             battle_sub_state = "player_wins"
+            # stop the battle music, play the victory music
+            pygame.mixer.music.stop()
+            pygame.mixer.music.load("assets/music/victory.mp3")
+            pygame.mixer.music.play(loops=-1)
             battle_text_index = 0
         
     elif battle_sub_state == "opponent_send_out_mon":
@@ -880,6 +866,7 @@ def trainer_battle_main(opponent, key_pressed=None):
             main_textbox.draw()
             player_healthbar.draw()
             opponent_healthbar.draw()
+            death_switch = True
             battle_sub_state = "player_choose_mon"
             battle_mon_index = 0
             battle_text_index = 0
@@ -901,7 +888,10 @@ def trainer_battle_main(opponent, key_pressed=None):
                 switch_pkmn_text = "Bring out which\nPOKéMON?"
                 battle_text_index = 0
         elif key_pressed == "enter":
-            if not death_check(player.party[current_hover]):
+            if player.party[current_hover] == player.current_pokemon and not death_check(player.party[current_hover]):
+                switch_pkmn_text = f"{player.current_pokemon.nickname} is\nalready out!"
+                battle_text_index = 0
+            elif not death_check(player.party[current_hover]):
                 player.current_pokemon = player.party[current_hover]
                 player_healthbar.pokemon = player.current_pokemon
                 battle_sub_state = "player_send_out_mon"
@@ -911,6 +901,9 @@ def trainer_battle_main(opponent, key_pressed=None):
                 switch_pkmn_text = f"{player.party[current_hover].nickname} is\nunable to battle!"
                 battle_text_index = 0
                 current_hover = 0
+        elif key_pressed == "backspace" and not death_switch:
+            battle_sub_state = "player_select"
+            current_hover = 0
 
         for switch in switches:
             switch.draw()
@@ -922,7 +915,6 @@ def trainer_battle_main(opponent, key_pressed=None):
 
     elif battle_sub_state == "player_send_out_mon":
         opponent.current_pokemon.battlesprite_draw()
-        main_textbox.draw()
         player_healthbar.draw()
         opponent_healthbar.draw()
         battle_text_index += 1
@@ -934,7 +926,11 @@ def trainer_battle_main(opponent, key_pressed=None):
             player_mon_cry.play()
             while pygame.mixer.get_busy():
                 pygame.time.delay(100)
-            battle_sub_state = "opponent_select_move"
+            if death_switch:
+                battle_sub_state = "player_select"
+                death_switch = False
+            else:
+                battle_sub_state = "opponent_select_move"
             battle_mon_index = 0
             battle_text_index = 0
             shownFirst = False
@@ -944,6 +940,7 @@ def trainer_battle_main(opponent, key_pressed=None):
         elif scaling == "showing":
             player.current_pokemon.battlesprite_draw()
 
+        main_textbox.draw()
         display_text(f"Go! {player.current_pokemon.species}!", (8 * scale, 110 * scale), battle_text_index // 2)
 
     elif battle_sub_state == "player_run":
@@ -960,6 +957,20 @@ def trainer_battle_main(opponent, key_pressed=None):
             if key_pressed == "enter":
                battle_sub_state = "player_select"
                battle_text_index = 0
+
+    elif battle_sub_state == "player_wins":
+        player.current_pokemon.battlesprite_draw()
+        main_textbox.draw()
+        player_healthbar.draw()
+
+        battle_text_index += 1
+
+        if display_text(f"{player.name} wins!", (8 * scale, 110 * scale), battle_text_index // 2) == "done":
+            continue_tri.draw()
+            if key_pressed == "enter":
+                battle_state = "postcutscene"
+                battle_sub_state = "player_wins"
+                battle_text_index = 0
 
     if opponent.current_pokemon.pending_hp < 0:
         opponent.current_pokemon.curr_hp -= 0.5

@@ -223,9 +223,7 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
                                           "lightscreen" in user.owner_reference.field_move) * additional_multiplier
             
             # Apply damage
-            print(target.pending_hp)
             target.pending_hp -= damage  # Ensure this modifies the correct target object
-            print(target.pending_hp)
             return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}\nused {move.name}!")
 
             if crit:
