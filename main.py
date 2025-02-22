@@ -45,6 +45,7 @@ speed_stage_multipliers = {
 
 who_went_first = None
 half_turn_done = False
+switch_pkmn_text = "Bring out which\nPOKéMON?"
 
 trainer_music = pygame.mixer.music.load("assets/music/trainer_battle.mp3")
 # 9x10 grid
@@ -259,7 +260,7 @@ class SwitchSelect(UIelement):
 
         # draw the hp / max hp
         hp_surface = font.render(f"{int(self.pokemon.curr_hp)}/{self.pokemon.max_hp}", True, (0, 0, 0))
-        screen.blit(hp_surface, (self.pos[0] + 112 * scale, self.pos[1] + 6 * scale))
+        screen.blit(hp_surface, (self.pos[0] + (136 - hp_offset[len(f"{int(self.pokemon.curr_hp)}/{self.pokemon.max_hp}")]) * scale, self.pos[1] + 7 * scale))
 
         #draw hp bar
         health_percentage = self.pokemon.curr_hp / self.pokemon.max_hp
@@ -271,11 +272,21 @@ class SwitchSelect(UIelement):
         #draw fnt if fainted
         if self.pokemon.curr_hp <= 0:
             fnt_surface = font.render("FNT", True, (0, 0, 0))
-            screen.blit(fnt_surface, (self.pos[0] + 48 * scale, self.pos[1] - 9 * scale))
+            screen.blit(fnt_surface, (self.pos[0] + 137 * scale, self.pos[1] - 1 * scale))
 
 # offset of hp / max hp based on how many digits the hp has
-hp_offset = {}
+# min digits = 3 (1/1 etc.,) max digits = 7 (999/999 etc.,)
+hp_offset = {3: 0, 4: 6, 5: 16, 6: 24, 7: 32}
 switches = []
+poke_cur_hov_dict = {
+    0: (1*scale, 8 * scale),
+    1: (1*scale, 24 * scale),
+    2: (1*scale, 40 * scale),
+    3: (1*scale, 56 * scale),
+    4: (1*scale, 72 * scale),
+    5: (1*scale, 88 * scale),
+}
+
 main_textbox = UIelement(pygame.image.load("assets/ui/battle/textbox.png"), (0, 96 * scale))
 continue_tri = UIelement(pygame.image.load("assets/ui/battle/continue.png"), (142 * scale, 130 * scale))
 player_healthbar = HealthBar(pygame.image.load("assets/ui/battle/player_healthbar.png"), (75 * scale, 67 * scale), player=True)
@@ -294,7 +305,6 @@ moves_cur_hov_dict = {0: (41 * scale, 106 * scale),
                     1: (41 * scale, 114 * scale),
                     2: (41 * scale, 122 * scale),
                     3: (41 * scale, 130 * scale)}
-moves_selector = UIelement(pygame.image.load("assets/ui/battle/right_arrow.png"), (8 * scale, 112 * scale))
 
 # get the pokemon from the database
 conn = sqlite3.connect("FirstGenPokemon.db")
@@ -391,7 +401,8 @@ def pre_battle_cutscene(idx):
     global screen, scale, trainer_music, filled_squares, battle_state
 
     if idx == 1:
-        pygame.mixer.music.play(loops=-1)
+        pass
+        #pygame.mixer.music.play(loops=-1)
 
     try:
         filled_squares.append(order.pop(0))
@@ -602,7 +613,9 @@ def trainer_battle_init(opponent, key_pressed=None):
 
 def trainer_battle_main(opponent, key_pressed=None):
     
-    global player, battle_sub_state, current_hover, moves_selector, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar
+    global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text
+
+    print(who_went_first)
 
     if battle_sub_state == "player_select":
         half_turn_done = False
@@ -637,14 +650,14 @@ def trainer_battle_main(opponent, key_pressed=None):
                 battle_sub_state = "player_run"
             
     elif battle_sub_state == "player_select_move":
-        moves_selector.pos = moves_cur_hov_dict[current_hover]
+        main_selector.pos = moves_cur_hov_dict[current_hover]
         opponent.current_pokemon.battlesprite_draw()
         player.current_pokemon.battlesprite_draw()
         main_textbox.draw()
         player_healthbar.draw()
         opponent_healthbar.draw()
         moves_ui.draw()
-        moves_selector.draw()
+        main_selector.draw()
 
         if key_pressed == "up":
             current_hover = (current_hover - 1) % len(player.current_pokemon.moves)
@@ -746,10 +759,24 @@ def trainer_battle_main(opponent, key_pressed=None):
                 msgs_index += 1
                 pygame.time.delay(500)
             
-            if msgs_index + 1 == len(msgs) and opponent.current_pokemon.pending_hp == 0 and player.current_pokemon.pending_hp == 0:
+            if msgs_index + 1 == len(msgs) and opponent.current_pokemon.pending_hp == 0 and player.current_pokemon.pending_hp == 0: # CODE HERE NEXT PLE>ASE TAHNKS AARON
                 continue_tri.draw()
                 if key_pressed == "enter" and half_turn_done:
-                    battle_sub_state = "player_select"
+                    half_turn_done = False
+                    if who_went_first == "player":
+                        if death_check(opponent.current_pokemon):
+                            battle_sub_state = "opponent_withdraw_mon"
+                            shownFirst = False
+                            battle_mon_index = 0
+                        else:
+                            battle_sub_state = "perform_opponent_actions"
+                    elif who_went_first == "opponent":
+                        if death_check(player.current_pokemon):
+                            battle_sub_state = "player_withdraw_mon"
+                            shownFirst = False
+                            battle_mon_index = 0
+                        else:
+                            battle_sub_state = "perform_player_actions"
                     msgs_index = 0
                     battle_text_index = 0
                 elif key_pressed == "enter":
@@ -861,13 +888,63 @@ def trainer_battle_main(opponent, key_pressed=None):
 
     elif battle_sub_state == "player_choose_mon":
         battle_text_index += 1
-        main_textbox.draw()
+        main_selector.pos = poke_cur_hov_dict[current_hover]
+
+        if key_pressed == "up":
+            current_hover = (current_hover - 1) % len(player.party)
+            if switch_pkmn_text != "Bring out which\nPOKéMON?":
+                switch_pkmn_text = "Bring out which\nPOKéMON?"
+                battle_text_index = 0
+        elif key_pressed == "down":
+            current_hover = (current_hover + 1) % len(player.party)
+            if switch_pkmn_text != "Bring out which\nPOKéMON?":
+                switch_pkmn_text = "Bring out which\nPOKéMON?"
+                battle_text_index = 0
+        elif key_pressed == "enter":
+            if not death_check(player.party[current_hover]):
+                player.current_pokemon = player.party[current_hover]
+                player_healthbar.pokemon = player.current_pokemon
+                battle_sub_state = "player_send_out_mon"
+                battle_text_index = 0
+                current_hover = 0
+            else:
+                switch_pkmn_text = f"{player.party[current_hover].nickname} is\nunable to battle!"
+                battle_text_index = 0
+                current_hover = 0
 
         for switch in switches:
             switch.draw()
 
-        display_text("Bring out which\nPOKéMON?", (8 * scale, 110 * scale), battle_text_index // 2)
+        main_textbox.draw()
+        main_selector.draw()
 
+        display_text(switch_pkmn_text, (8 * scale, 110 * scale), battle_text_index // 2)
+
+    elif battle_sub_state == "player_send_out_mon":
+        opponent.current_pokemon.battlesprite_draw()
+        main_textbox.draw()
+        player_healthbar.draw()
+        opponent_healthbar.draw()
+        battle_text_index += 1
+        battle_mon_index += 1
+
+        scaling = trainer_init_pkmn_appear(player.current_pokemon, battle_mon_index, shownFirst)
+        
+        if scaling == "done":
+            player_mon_cry.play()
+            while pygame.mixer.get_busy():
+                pygame.time.delay(100)
+            battle_sub_state = "opponent_select_move"
+            battle_mon_index = 0
+            battle_text_index = 0
+            shownFirst = False
+        elif scaling == "shownFirst":
+            player.current_pokemon.battlesprite_draw()
+            shownFirst = True
+        elif scaling == "showing":
+            player.current_pokemon.battlesprite_draw()
+
+        display_text(f"Go! {player.current_pokemon.species}!", (8 * scale, 110 * scale), battle_text_index // 2)
 
     elif battle_sub_state == "player_run":
         opponent.current_pokemon.battlesprite_draw()
