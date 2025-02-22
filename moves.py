@@ -1172,6 +1172,9 @@ class Watergun(Move):
     def __init__(self):
         super().__init__(name="Water Gun", type="water", category="special", power=40, accuracy=100, pp=25)
 
+    def effect(self, user, target, enemy):
+        return apply_move_effect(self, user, target, enemy)[0]
+
 class Waterfall(Move):
     def __init__(self):
         super().__init__(name="Waterfall", type="water", category="physical", power=80, accuracy=100, pp=15)

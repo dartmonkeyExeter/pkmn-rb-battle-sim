@@ -241,7 +241,39 @@ class MovesSelect(UIelement):
         pp_surface = font.render(f"{moves[current_hover].curr_pp}/{moves[current_hover].pp}", True, (0, 0, 0))
         screen.blit(pp_surface, (self.pos[0] + 40 * scale, self.pos[1] + 24 * scale))
 
+class SwitchSelect(UIelement):
+    def __init__(self, sprite, pos, pokemon):
+        super().__init__(sprite, pos)
+        self.pokemon = pokemon
 
+    def draw(self):
+        global scale
+        screen.blit(self.sprite, self.pos)
+        # draw the pokemon name
+        name_surface = font.render(self.pokemon.nickname, True, (0, 0, 0))
+        screen.blit(name_surface, (self.pos[0] + 25 * scale, self.pos[1] + 0 * scale))
+
+        # draw the level
+        level_surface = font.render(f"{self.pokemon.level}", True, (0, 0, 0))
+        screen.blit(level_surface, (self.pos[0] + 112 * scale, self.pos[1] - 2 * scale))
+
+        # draw the hp / max hp
+        hp_surface = font.render(f"{int(self.pokemon.curr_hp)}/{self.pokemon.max_hp}", True, (0, 0, 0))
+        screen.blit(hp_surface, (self.pos[0] + 96 * scale, self.pos[1] + 4 * scale))
+
+        #draw hp bar
+        health_percentage = self.pokemon.curr_hp / self.pokemon.max_hp
+        health_bar = pygame.Surface((health_percentage * 48 * scale, 2 * scale))
+        health_bar.fill((72, 160, 88))
+
+        screen.blit(health_bar, (self.pos[0] + 24 * scale, self.pos[1] + 11 * scale))
+
+        #draw fnt if fainted
+        if self.pokemon.curr_hp <= 0:
+            fnt_surface = font.render("FNT", True, (0, 0, 0))
+            screen.blit(fnt_surface, (self.pos[0] + 48 * scale, self.pos[1] - 9 * scale))
+
+switches = []
 main_textbox = UIelement(pygame.image.load("assets/ui/battle/textbox.png"), (0, 96 * scale))
 continue_tri = UIelement(pygame.image.load("assets/ui/battle/continue.png"), (142 * scale, 130 * scale))
 player_healthbar = HealthBar(pygame.image.load("assets/ui/battle/player_healthbar.png"), (75 * scale, 67 * scale), player=True)
@@ -276,14 +308,14 @@ conn.close()
 # create the pokemon objects
 # hp starts at index 12
 
-charmander = Pokemon(charmander_data[0], charmander_data[1], "CHARMANDER", 5, 0, charmander_data[2], charmander_data[3], charmander_data[12], charmander_data[13], charmander_data[14], charmander_data[15], charmander_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Scratch(), Growl(), Quickattack()], True)
+charmander = Pokemon(charmander_data[0], charmander_data[1], "CHARMANDER", 1, 0, charmander_data[2], charmander_data[3], charmander_data[12], charmander_data[13], charmander_data[14], charmander_data[15], charmander_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Scratch(), Growl(), Quickattack()], True)
 mewtwo = Pokemon(150, "MEWTWO", "MEWTWO", 70, 0, "PSYCHIC", None, 106, 110, 90, 154, 130, 15, 15, 15, 15, [Tackle(), Growl(), Quickattack()], True)
 
-squirtle = Pokemon(squirtle_data[0], squirtle_data[1], "SQUIRTLE", 5, 0, squirtle_data[2], squirtle_data[3], squirtle_data[12], squirtle_data[13], squirtle_data[14], squirtle_data[15], squirtle_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Tailwhip(), Tackle()])
+squirtle = Pokemon(squirtle_data[0], squirtle_data[1], "SQUIRTLE", 5, 0, squirtle_data[2], squirtle_data[3], squirtle_data[12], squirtle_data[13], squirtle_data[14], squirtle_data[15], squirtle_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Watergun()])
 bulbasaur = Pokemon(bulbasaur_data[0], bulbasaur_data[1], "BULBASAUR", 5, 0,bulbasaur_data[2], bulbasaur_data[3], bulbasaur_data[12], bulbasaur_data[13], bulbasaur_data[14], bulbasaur_data[15], 140, random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Growl(), Tackle()])
 
-player = Trainer("RED", [mewtwo], pygame.image.load(f"assets/trainers/red.png"), True)
-blue = Trainer("BLUE", [bulbasaur, squirtle], pygame.image.load(f"assets/trainers/blue.png"), ai_level=0)
+player = Trainer("RED", [charmander], pygame.image.load(f"assets/trainers/red.png"), True)
+blue = Trainer("BLUE", [squirtle], pygame.image.load(f"assets/trainers/blue.png"), ai_level=0)
 PLAYER_INIT_BATTLEPOS = [160 * scale, 40 * scale]
 OPPONENT_INIT_BATTLEPOS = [-50 * scale, 0 * scale]
 
@@ -362,7 +394,7 @@ def pre_battle_cutscene(idx):
     try:
         filled_squares.append(order.pop(0))
     except IndexError:
-        pygame.time.delay(250)
+        pygame.time.delay(50)
         battle_state = "init"
         return "done"
     
@@ -453,9 +485,10 @@ def trainer_battle_init(opponent, key_pressed=None):
         player.battle_pos = PLAYER_INIT_BATTLEPOS
         opponent.battle_pos = OPPONENT_INIT_BATTLEPOS
 
-        for pokemon in player.party:
+        for idx, pokemon in enumerate(player.party):
             pokemon.owner_reference = player
             pokemon.battle_pos = PLAYERMON_FINAL_BATTLEPOS.copy()  # Creates a new list
+            switches.append(SwitchSelect(pygame.image.load("assets/ui/battle/switch.png"), (0, idx*16*scale), pokemon))
 
         for pokemon in opponent.party:
             pokemon.owner_reference = blue
@@ -740,8 +773,6 @@ def trainer_battle_main(opponent, key_pressed=None):
         battle_text_index += 1
         battle_mon_index += 1
 
-        display_text(f"{opponent.current_pokemon.species} fainted!", (8 * scale, 110 * scale), battle_text_index // 2)
-
         if opponent.current_pokemon.battle_pos[1] < screen.get_height() / 2:
             opponent.current_pokemon.battle_pos[1] += 4 * scale
             opponent.current_pokemon.battlesprite_draw()
@@ -758,6 +789,8 @@ def trainer_battle_main(opponent, key_pressed=None):
             battle_sub_state = "opponent_choose_mon"
             battle_mon_index = 0
             battle_text_index = 0
+
+        display_text(f"{opponent.current_pokemon.species} fainted!", (8 * scale, 110 * scale), battle_text_index // 2)
 
     elif battle_sub_state == "opponent_choose_mon":
         player.current_pokemon.battlesprite_draw()
@@ -801,36 +834,36 @@ def trainer_battle_main(opponent, key_pressed=None):
             opponent.current_pokemon.battlesprite_draw()
 
     elif battle_sub_state == "player_withdraw_mon":
-        player.current_pokemon.battlesprite_draw()
-        opponent.current_pokemon.battlesprite_draw()
-        main_textbox.draw()
-        player_healthbar.draw()
-        opponent_healthbar.draw()
         battle_text_index += 1
         battle_mon_index += 1
 
-        display_text(f"{player.current_pokemon.species} fainted!", (8 * scale, 110 * scale), battle_text_index // 2)
-        scaling = trainer_pkmn_disappear(player.current_pokemon, battle_mon_index, shownFirst)
-        player_healthbar.draw()
-
-        if scaling == "done":
-            player_mon_cry.play()
-            while pygame.mixer.get_busy():
-                pygame.time.delay(100)
+        if player.current_pokemon.battle_pos[1] < screen.get_height():
+            player.current_pokemon.battle_pos[1] += 4 * scale
+            player.current_pokemon.battlesprite_draw()
+            opponent.current_pokemon.battlesprite_draw()
+            main_textbox.draw()
+            player_healthbar.draw()
+            opponent_healthbar.draw()
+        else:
+            pygame.time.delay(500)
+            player.current_pokemon.battlesprite_draw()
+            opponent.current_pokemon.battlesprite_draw()
+            main_textbox.draw()
+            player_healthbar.draw()
+            opponent_healthbar.draw()
             battle_sub_state = "player_choose_mon"
             battle_mon_index = 0
             battle_text_index = 0
-            shownFirst = False
-        elif scaling == "shownFirst":
-            player.current_pokemon.battlesprite_draw()
-            shownFirst = True
-        elif scaling == "showing":
-            player.current_pokemon.battlesprite_draw()
+
+        display_text(f"{player.current_pokemon.species} fainted!", (8 * scale, 110 * scale), battle_text_index // 2)
 
     elif battle_sub_state == "player_choose_mon":
-        pass
-        
-        
+        main_textbox.draw()
+
+        for switch in switches:
+            switch.draw()
+
+        display_text("Bring out which\POKéMON?", (8 * scale, 110 * scale), battle_text_index // 2)
 
 
     elif battle_sub_state == "player_run":
@@ -849,26 +882,26 @@ def trainer_battle_main(opponent, key_pressed=None):
                battle_text_index = 0
 
     if opponent.current_pokemon.pending_hp < 0:
-        opponent.current_pokemon.curr_hp -= 0.25
-        opponent.current_pokemon.pending_hp += 0.25
+        opponent.current_pokemon.curr_hp -= 0.5
+        opponent.current_pokemon.pending_hp += 0.5
         if opponent.current_pokemon.curr_hp == 0:
             opponent.current_pokemon.pending_hp = 0
 
     elif opponent.current_pokemon.pending_hp > 0:
-        opponent.current_pokemon.curr_hp += 0.25
-        opponent.current_pokemon.pending_hp -= 0.25
+        opponent.current_pokemon.curr_hp += 0.5
+        opponent.current_pokemon.pending_hp -= 0.5
         if opponent.current_pokemon.curr_hp == opponent.current_pokemon.max_hp:
             opponent.current_pokemon.pending_hp = 0
 
     if player.current_pokemon.pending_hp < 0:
-        player.current_pokemon.curr_hp -= 0.25
-        player.current_pokemon.pending_hp += 0.25
+        player.current_pokemon.curr_hp -= 0.5
+        player.current_pokemon.pending_hp += 0.5
         if player.current_pokemon.curr_hp == 0:
             player.current_pokemon.pending_hp = 0
 
     elif player.current_pokemon.pending_hp > 0:
-        player.current_pokemon.curr_hp += 0.25
-        player.current_pokemon.pending_hp -= 0.25
+        player.current_pokemon.curr_hp += 0.5
+        player.current_pokemon.pending_hp -= 0.5
         if player.current_pokemon.curr_hp == player.current_pokemon.max_hp:
             player.current_pokemon.pending_hp = 0      
 
