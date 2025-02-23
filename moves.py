@@ -275,6 +275,8 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
     effectiveness_message = check_effectiveness(move.type, target)
     return_messages.append(effectiveness_message)
 
+    pygame.mixer.Sound.play(move.sound)
+
     return return_messages, damage  # Damage is now always returned properly
 
 
