@@ -355,12 +355,6 @@ PLAYERMON_FINAL_BATTLEPOS = [10 * scale, 40 * scale]
 OPPONENT_FINAL_BATTLEPOS = [95 * scale, 0 * scale]
 OPPONENTMON_FINAL_BATTLEPOS = [110 * scale, 15 * scale]
 
-squirtle.status = "paralyzed"
-charmander.status = "paralyzed"
-
-squirtle.bad_poison_count = 16
-charmander.bad_poison_count = 16
-
 def display_text(text, pos, index):
     global screen, clock, font
 

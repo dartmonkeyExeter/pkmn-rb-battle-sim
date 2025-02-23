@@ -1,4 +1,4 @@
-import random
+import random, pygame
 
 class Move:
     def __init__(self, name, type, category, power, accuracy, pp):
@@ -13,6 +13,7 @@ class Move:
         self.disabled = False
         self.crit_buff = False
         self.tags = []
+        self.sound = pygame.mixer.Sound(f"assets/sfx/moves/{self.name.lower()}.wav")
 
     def __repr__(self):
         return f"{self.__class__.__name__}(Type: {self.type}, Power: {self.power}, Accuracy: {self.accuracy}, PP: {self.pp})"
