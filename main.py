@@ -864,6 +864,7 @@ def trainer_battle_main(opponent, key_pressed=None):
             player_healthbar.draw()
             opponent_healthbar.draw()
         else:
+            pygame.mixer.Sound(f"assets/sfx/cries/{opponent.current_pokemon.dex_num:03}.wav").play()
             opponent.current_pokemon.battlesprite_draw()
             player.current_pokemon.battlesprite_draw()
             main_textbox.draw()
@@ -933,7 +934,7 @@ def trainer_battle_main(opponent, key_pressed=None):
             player_healthbar.draw()
             opponent_healthbar.draw()
         else:
-            pygame.time.delay(500)
+            pygame.mixer.Sound(f"assets/sfx/cries/{player.current_pokemon.dex_num:03}.wav").play()
             player.current_pokemon.battlesprite_draw()
             opponent.current_pokemon.battlesprite_draw()
             main_textbox.draw()
@@ -943,6 +944,7 @@ def trainer_battle_main(opponent, key_pressed=None):
             battle_sub_state = "player_choose_mon"
             battle_mon_index = 0
             battle_text_index = 0
+            pygame.time.delay(1000)
 
         display_text(f"{player.current_pokemon.species} fainted!", (8 * scale, 110 * scale), battle_text_index // 2)
 

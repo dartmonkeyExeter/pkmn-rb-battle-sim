@@ -13,7 +13,10 @@ class Move:
         self.disabled = False
         self.crit_buff = False
         self.tags = []
-        self.sound = pygame.mixer.Sound(f"assets/sfx/moves/{self.name.lower().replace(" ", "")}.wav")
+        try:
+            self.sound = pygame.mixer.Sound(f"assets/sfx/moves/{self.name.lower().replace(" ", "")}.wav")
+        except:
+            self.sound = None
 
     def __repr__(self):
         return f"{self.__class__.__name__}(Type: {self.type}, Power: {self.power}, Accuracy: {self.accuracy}, PP: {self.pp})"
@@ -272,18 +275,22 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
             return_messages.append(f"{'Enemy ' if enemy else ''}{vol_status_target.nickname} is now affected by {vol_status_name}!")
 
     # Check effectiveness
-    effectiveness_message = check_effectiveness(move.type, target)
-    return_messages.append(effectiveness_message)
+    if move.power != 0:
+        effectiveness_message = check_effectiveness(move.type, target)
+        return_messages.append(effectiveness_message)
 
-    pygame.mixer.Sound.play(move.sound)
-    if effectiveness_message == "It's super effective!":
-        pygame.mixer.Sound.play(pygame.mixer.Sound("assets/sfx/super_effective.wav"))
-    elif effectiveness_message == "It's not very effective...":
-        pygame.mixer.Sound.play(pygame.mixer.Sound("assets/sfx/not_very_effective.wav"))
-    elif effectiveness_message == "It had no effect...":
-        pass
-    else:
-        pygame.mixer.Sound.play(pygame.mixer.Sound("assets/sfx/hit.wav"))
+    if move.sound:
+        pygame.mixer.Sound.play(move.sound)
+
+    if move.power != 0:
+        if effectiveness_message == "It's super effective!":
+            pygame.mixer.Sound.play(pygame.mixer.Sound("assets/sfx/moves/super_effective.wav"))
+        elif effectiveness_message == "It's not very effective...":
+            pygame.mixer.Sound.play(pygame.mixer.Sound("assets/sfx/moves/not_very_effective.wav"))
+        elif effectiveness_message == "It had no effect...":
+            pass
+        else:
+            pygame.mixer.Sound.play(pygame.mixer.Sound("assets/sfx/moves/hit.wav"))
 
     return return_messages, damage  # Damage is now always returned properly
 
