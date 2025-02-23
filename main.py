@@ -23,6 +23,7 @@ hp_fps_wait = 0
 shownFirst = False
 player_mon_cry = None
 opponent_mon_cry = None
+msgs = []
 
 player_intended_action = None
 opponent_intended_action = None
@@ -629,6 +630,8 @@ def trainer_battle_main(opponent, key_pressed=None):
     
     global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text, death_switch, end_turn
 
+    print(msgs)
+
     if battle_sub_state == "player_select":
         half_turn_done = False
         end_turn = False
@@ -941,6 +944,7 @@ def trainer_battle_main(opponent, key_pressed=None):
                 player.current_pokemon.poison_counter = 0 # reset toxic counter
                 player.current_pokemon = player.party[current_hover]
                 player_healthbar.pokemon = player.current_pokemon
+                end_turn = True
                 battle_sub_state = "player_send_out_mon"
                 battle_text_index = 0
                 current_hover = 0
