@@ -24,11 +24,14 @@ shownFirst = False
 player_mon_cry = None
 opponent_mon_cry = None
 msgs = []
+status_msgs = []
+status_msg_index = 0
 
 player_intended_action = None
 opponent_intended_action = None
 end_turn = False
 msgs_index = 0
+status_death_check = False
 speed_stage_multipliers = {
     -6: 2 / 8,
     -5: 2 / 7,
@@ -49,6 +52,7 @@ who_went_first = None
 half_turn_done = False
 switch_pkmn_text = "Bring out which\nPOKéMON?"
 death_switch = False
+both_faint = False
 
 trainer_music = pygame.mixer.music.load("assets/music/trainer_battle.mp3")
 # 9x10 grid
@@ -233,7 +237,6 @@ healthbar_offset_dict = {
     7: 36
 }
 
-
 class MovesSelect(UIelement):
     def __init__(self, sprite, pos):
         super().__init__(sprite, pos)
@@ -334,7 +337,7 @@ conn.close()
 # create the pokemon objects
 # hp starts at index 12
 
-charmander = Pokemon(charmander_data[0], charmander_data[1], "CHARMANDER", 100, 0, charmander_data[2], charmander_data[3], charmander_data[12], charmander_data[13], charmander_data[14], charmander_data[15], charmander_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Scratch(), Growl(), Quickattack()], True)
+charmander = Pokemon(charmander_data[0], charmander_data[1], "CHARMANDER", 20, 0, charmander_data[2], charmander_data[3], charmander_data[12], charmander_data[13], charmander_data[14], charmander_data[15], charmander_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Scratch(), Growl(), Quickattack()], True)
 mewtwo = Pokemon(150, "MEWTWO", "MEWTWO", 20, 0, "PSYCHIC", None, 106, 110, 90, 154, 130, 15, 15, 15, 15, [Tackle(), Growl(), Quickattack()], True)
 mew = Pokemon(151, "MEW", "MEW", 1, 0, "PSYCHIC", None, 100, 100, 100, 100, 100, 15, 15, 15, 15, [Tackle(), Growl(), Quickattack()], True)
 
@@ -351,6 +354,12 @@ PLAYER_FINAL_BATTLEPOS = [10 * scale, 40 * scale]
 PLAYERMON_FINAL_BATTLEPOS = [10 * scale, 40 * scale]
 OPPONENT_FINAL_BATTLEPOS = [95 * scale, 0 * scale]
 OPPONENTMON_FINAL_BATTLEPOS = [110 * scale, 15 * scale]
+
+squirtle.status = "paralyzed"
+charmander.status = "paralyzed"
+
+squirtle.bad_poison_count = 16
+charmander.bad_poison_count = 16
 
 def display_text(text, pos, index):
     global screen, clock, font
@@ -628,13 +637,15 @@ def trainer_battle_init(opponent, key_pressed=None):
 
 def trainer_battle_main(opponent, key_pressed=None):
     
-    global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text, death_switch, end_turn
+    global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text, death_switch, end_turn, status_death_check, both_faint, status_msgs, status_msg_index
 
-    print(msgs)
+    print(status_msgs)
 
     if battle_sub_state == "player_select":
         half_turn_done = False
         end_turn = False
+        both_faint = False
+        status_death_check = False
         main_selector.pos = opts_cur_hov_dict[current_hover]
 
         opponent.current_pokemon.battlesprite_draw()
@@ -759,74 +770,93 @@ def trainer_battle_main(opponent, key_pressed=None):
         opponent_healthbar.draw()
 
         battle_text_index += 1
-
-        if display_text(msgs[msgs_index], (8 * scale, 110 * scale), battle_text_index // 2) == "done":
-            if msgs_index < len(msgs) - 1 and opponent.current_pokemon.pending_hp == 0 and player.current_pokemon.pending_hp == 0 and battle_text_index > 100:
-                battle_text_index = 0
-                msgs_index += 1
-                pygame.time.delay(500)
-            
-            if msgs_index + 1 == len(msgs) and opponent.current_pokemon.pending_hp == 0 and player.current_pokemon.pending_hp == 0:
-                continue_tri.draw()
-                
-                if key_pressed == "enter":
-                    half_turn_done = not half_turn_done
-                    first, second = ("player", "opponent") if who_went_first == "player" else ("opponent", "player")
-
-                    if death_check(player.current_pokemon):
-                        # check that player has atleast one pokemon left
-                        flag = False
-                        for pokemon in player.party:
-                            if not death_check(pokemon):
-                                flag = True
-                                break
-                        if flag:    
-                            battle_sub_state = "player_withdraw_mon"
-                        else:
-                            battle_sub_state = "opponent_wins"
-                    elif death_check(opponent.current_pokemon):
-                        battle_sub_state = "opponent_withdraw_mon"
-                    else:
-                        if not end_turn:
-                            battle_sub_state = f"perform_{second}_actions" if half_turn_done else f"perform_{first}_actions"
-                            end_turn = True
-                        else:
-                            battle_sub_state = "damage_conditions" # burn, poison, etc.
-                            player_status = player.current_pokemon.status
-                            opponent_status = opponent.current_pokemon.status
-                            battle_sub_state = "damage_conditions"if player_status or opponent_status else "player_select"
-                            status_msgs = []
-                            status_msg_index = 0
-                            if player_status:
-                                status_msgs.append(f"{player.current_pokemon.nickname} is hurt by its {player_status}!")
-                            if opponent_status:
-                                status_msgs.append(f"{opponent.current_pokemon.nickname} is hurt by its {opponent_status}!")
-
-                            if player.current_pokemon.status == "burn":
-                                player.current_pokemon.pending_hp -= player.current_pokemon.max_hp // 16
-                            if opponent.current_pokemon.status == "burn":
-                                opponent.current_pokemon.pending_hp -= opponent.current_pokemon.max_hp // 16
-
-                            if player.current_pokemon.status == "poison" and player.current_pokemon.poison_counter == 0:
-                                player.current_pokemon.pending_hp -= player.current_pokemon.max_hp // 8
-                            elif player.current_pokemon.status == "poison" and player.current_pokemon.poison_counter > 0:
-                                player.current_pokemon.poison_counter += 1
-                                player.current_pokemon.pending_hp -= player.current_pokemon.max_hp // 16 * player.current_pokemon.poison_counter
-                                if player.current_pokemon.poison_counter == 16:
-                                    player.current_pokemon.status = "poison"
-                                    player.current_pokemon.poison_counter = 16
-                            if opponent.current_pokemon.status == "poison" and opponent.current_pokemon.poison_counter == 0:
-                                opponent.current_pokemon.pending_hp -= opponent.current_pokemon.max_hp // 8
-                            elif opponent.current_pokemon.status == "poison" and opponent.current_pokemon.poison_counter > 0:
-                                opponent.current_pokemon.poison_counter += 1
-                                opponent.current_pokemon.pending_hp -= opponent.current_pokemon.max_hp // 16 * opponent.current_pokemon.poison_counter
-                                if opponent.current_pokemon.poison_counter == 16:
-                                    opponent.current_pokemon.status = "poison"
-                                    opponent.current_pokemon.poison_counter = 16
-                    shownFirst = False
-                    battle_mon_index = 0
-                    msgs_index = 0
+        if not status_death_check:
+            if display_text(msgs[msgs_index], (8 * scale, 110 * scale), battle_text_index // 2) == "done":
+                if msgs_index < len(msgs) - 1 and opponent.current_pokemon.pending_hp == 0 and player.current_pokemon.pending_hp == 0 and battle_text_index > 100:
                     battle_text_index = 0
+                    msgs_index += 1
+                    pygame.time.delay(500)
+                
+                if msgs_index + 1 == len(msgs) and opponent.current_pokemon.pending_hp == 0 and player.current_pokemon.pending_hp == 0:
+                    continue_tri.draw()
+                    
+                    if key_pressed == "enter":
+                        half_turn_done = not half_turn_done
+                        first, second = ("player", "opponent") if who_went_first == "player" else ("opponent", "player")
+
+                        if death_check(player.current_pokemon):
+                            # check that player has atleast one pokemon left
+                            flag = False
+                            for pokemon in player.party:
+                                if not death_check(pokemon):
+                                    flag = True
+                                    break
+                            if flag:    
+                                battle_sub_state = "player_withdraw_mon"
+                            else:
+                                battle_sub_state = "opponent_wins"
+                        elif death_check(opponent.current_pokemon):
+                            battle_sub_state = "opponent_withdraw_mon"
+                        else:
+                            if not end_turn:
+                                battle_sub_state = f"perform_{second}_actions" if half_turn_done else f"perform_{first}_actions"
+                                end_turn = True
+                            else:
+                                player_status = player.current_pokemon.status
+                                opponent_status = opponent.current_pokemon.status
+                                if player_status == "burn" or player_status == "poison" or opponent_status == "burn" or opponent_status == "poison":
+                                    battle_sub_state = "damage_conditions"
+                                    status_msgs = []
+                                    status_msg_index = 0
+                                    if player_status == "burn" or player_status == "poison":
+                                        status_msgs.append(f"{player.current_pokemon.nickname} is hurt\nby its {player_status}!")
+                                    if opponent_status == "burn" or opponent_status == "poison":
+                                        status_msgs.append(f"{opponent.current_pokemon.nickname} is hurt\nby its {opponent_status}!")
+
+                                    if player.current_pokemon.status == "burn":
+                                        player.current_pokemon.pending_hp -= math.ceil(player.current_pokemon.max_hp / 16)
+                                    if opponent.current_pokemon.status == "burn":
+                                        opponent.current_pokemon.pending_hp -= math.ceil(opponent.current_pokemon.max_hp / 16)
+
+                                    if player.current_pokemon.status == "poison" and player.current_pokemon.bad_poison_count == 0:
+                                        player.current_pokemon.pending_hp -= math.ceil(player.current_pokemon.max_hp / 8)
+                                    elif player.current_pokemon.status == "poison" and player.current_pokemon.bad_poison_count > 0:
+                                        player.current_pokemon.bad_poison_count += 1
+                                        player.current_pokemon.pending_hp -= math.ceil(player.current_pokemon.max_hp / 16) * player.current_pokemon.bad_poison_count
+                                        if player.current_pokemon.bad_poison_count == 16:
+                                            player.current_pokemon.status = "poison"
+                                            player.current_pokemon.bad_poison_count = 16
+                                    if opponent.current_pokemon.status == "poison" and opponent.current_pokemon.bad_poison_count == 0:
+                                        opponent.current_pokemon.pending_hp -= math.ceil(opponent.current_pokemon.max_hp / 8)
+                                    elif opponent.current_pokemon.status == "poison" and opponent.current_pokemon.bad_poison_count > 0:
+                                        opponent.current_pokemon.bad_poison_count += 1
+                                        opponent.current_pokemon.pending_hp -= math.ceil(opponent.current_pokemon.max_hp / 16) * opponent.current_pokemon.bad_poison_count
+                                        if opponent.current_pokemon.bad_poison_count == 16:
+                                            opponent.current_pokemon.status = "poison"
+                                            opponent.current_pokemon.bad_poison_count = 16
+                                else:
+                                    battle_sub_state = "player_select"
+                        shownFirst = False
+                        battle_mon_index = 0
+                        msgs_index = 0
+                        battle_text_index = 0
+        else:
+            # if a pokemon on either side has fainted, display the fainted message
+            if death_check(player.current_pokemon) and death_check(opponent.current_pokemon):
+                battle_sub_state = "both_fainted" # edge case.... :(
+            elif death_check(player.current_pokemon):
+                flag = False
+                for pokemon in player.party:
+                    if not death_check(pokemon):
+                        flag = True
+                        break
+                if flag:    
+                    battle_sub_state = "player_withdraw_mon"
+                else:
+                    battle_sub_state = "opponent_wins"
+            elif death_check(opponent.current_pokemon):
+                battle_sub_state = "opponent_withdraw_mon"
+            status_death_check = False
 
     elif battle_sub_state == "opponent_withdraw_mon":
         battle_text_index += 1
@@ -941,7 +971,7 @@ def trainer_battle_main(opponent, key_pressed=None):
                 switch_pkmn_text = f"{player.current_pokemon.nickname} is\nalready out!"
                 battle_text_index = 0
             elif not death_check(player.party[current_hover]):
-                player.current_pokemon.poison_counter = 0 # reset toxic counter
+                player.current_pokemon.bad_poison_count = 0 # reset toxic counter
                 player.current_pokemon = player.party[current_hover]
                 player_healthbar.pokemon = player.current_pokemon
                 end_turn = True
@@ -976,9 +1006,11 @@ def trainer_battle_main(opponent, key_pressed=None):
             player_mon_cry.play()
             while pygame.mixer.get_busy():
                 pygame.time.delay(100)
-            if death_switch:
+            if death_switch and not both_faint:
                 battle_sub_state = "player_select"
                 death_switch = False
+            elif both_faint:
+                battle_sub_state = "opponent_withdraw_mon"
             else:
                 battle_sub_state = "opponent_select_move"
             battle_mon_index = 0
@@ -993,6 +1025,18 @@ def trainer_battle_main(opponent, key_pressed=None):
         main_textbox.draw()
         display_text(f"Go! {player.current_pokemon.species}!", (8 * scale, 110 * scale), battle_text_index // 2)
 
+    elif battle_sub_state == "both_fainted":
+        both_faint = True
+
+        opponent.current_pokemon.battlesprite_draw()
+        player.current_pokemon.battlesprite_draw()
+        main_textbox.draw()
+        player_healthbar.draw()
+        opponent_healthbar.draw()
+
+        battle_text_index += 1
+        battle_sub_state = "player_withdraw_mon"
+
     elif battle_sub_state == "damage_conditions":
         opponent.current_pokemon.battlesprite_draw()
         player.current_pokemon.battlesprite_draw()
@@ -1002,12 +1046,16 @@ def trainer_battle_main(opponent, key_pressed=None):
 
         battle_text_index += 1
 
-        if display_text(status_msgs[status_msg_index], (8 * scale, 110 * scale), battle_text_index // 2) == "done" and player.current_pokemon.pending_hp == 0 and opponent.current_pokemon.pending_hp == 0:
+        if display_text(status_msgs[status_msg_index], (8 * scale, 110 * scale), battle_text_index // 2) == "done" and player.current_pokemon.pending_hp == 0 and opponent.current_pokemon.pending_hp == 0 and battle_text_index > 100:
             if status_msg_index < len(status_msgs) - 1:
                 battle_text_index = 0
                 status_msg_index += 1
             else:
-                battle_sub_state = "player_select"
+                if player.current_pokemon.curr_hp == 0 or opponent.current_pokemon.curr_hp == 0:
+                    battle_sub_state = "display_msgs"
+                    status_death_check = True
+                else:
+                    battle_sub_state = "player_select"
                 battle_text_index = 0
 
     elif battle_sub_state == "player_run":

@@ -205,7 +205,7 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
 
     # **Full Paralysis Check (25% Chance)**
     if user.status == "paralyzed" and random.randint(1, 100) <= 25:
-        return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname} is fully paralyzed and can't move!")
+        return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname} is\nfully paralyzed!")
         return return_messages, None  # Move fails due to full paralysis
 
     # Check if the move deals damage
@@ -229,7 +229,7 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
             
             # Apply damage
             target.pending_hp -= damage  # Ensure this modifies the correct target object
-            return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}\nused {move.name}!")
+            return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}\nused {move.name.upper()}!")
 
             if crit:
                 return_messages.append("Critical hit!")
@@ -247,7 +247,7 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
             return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}'s attack missed!")
 
     else:
-        return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}\nused {move.name}!")
+        return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname}\nused {move.name.upper()}!")
 
     # Apply stat changes (if any)
     if stat_changes:
@@ -261,7 +261,7 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
         status_name = next(iter(status_change))
         if getattr(status_target, status_name, None) is None:
             setattr(status_target, status_name, True)
-            return_messages.append(f"{'Enemy ' if enemy else ''}{status_target.nickname} is now {status_name}!")
+            return_messages.append(f"{'Enemy ' if enemy else ''}{status_target.nickname} is now {status_name.upper()}!")
 
     # Apply volatile status (if any)
     if vol_status_change and vol_status_target:
