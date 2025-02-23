@@ -629,9 +629,6 @@ def trainer_battle_main(opponent, key_pressed=None):
     
     global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text, death_switch, end_turn
 
-    print(battle_sub_state)
-    print(player_intended_action)
-
     if battle_sub_state == "player_select":
         half_turn_done = False
         end_turn = False
@@ -1028,10 +1025,14 @@ def trainer_battle_main(opponent, key_pressed=None):
         player.current_pokemon.battlesprite_draw()
         main_textbox.draw()
         player_healthbar.draw()
+        opponent.battlesprite_draw()
 
         battle_text_index += 1
 
-        if display_text(f"{player.name} wins!", (8 * scale, 110 * scale), battle_text_index // 2) == "done":
+        if opponent.battle_pos[0] > OPPONENT_FINAL_BATTLEPOS[0]:
+            opponent.battle_pos = (opponent.battle_pos[0] - (2 * scale), opponent.battle_pos[1])
+
+        if display_text(f"{player.name} defeated\n{opponent.name}!", (8 * scale, 110 * scale), battle_text_index // 2) == "done":
             continue_tri.draw()
             if key_pressed == "enter":
                 battle_state = "postcutscene"
