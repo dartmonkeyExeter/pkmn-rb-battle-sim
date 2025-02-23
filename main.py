@@ -26,6 +26,7 @@ opponent_mon_cry = None
 
 player_intended_action = None
 opponent_intended_action = None
+end_turn = False
 msgs_index = 0
 speed_stage_multipliers = {
     -6: 2 / 8,
@@ -104,6 +105,8 @@ class Pokemon():
         self.vol_status = [] # volatile status effects
         
         self.crit_boost = False
+
+        self.bad_poison_count = 0
 
         self.collected_dmg = 0 # used for moves like counter and bide and mirror coat n stuff
         self.turn_count = 0 # used for moves like bide and rollout n stuff
@@ -204,7 +207,7 @@ class HealthBar(UIelement):
 
                 # draw the hp / max hp
                 hp_surface = font.render(f"{int(self.pokemon.curr_hp)}/    {self.pokemon.max_hp}", True, (0, 0, 0))
-                screen.blit(hp_surface, (self.pos[0] + 24 * scale, self.pos[1] + 16 * scale))
+                screen.blit(hp_surface, (self.pos[0] + (48 - healthbar_offset_dict[len(f"{int(self.pokemon.curr_hp)}/{self.pokemon.max_hp}")]) * scale, self.pos[1] + 16 * scale))
             else:
                 screen.blit(self.sprite, self.pos)
 
@@ -220,6 +223,15 @@ class HealthBar(UIelement):
                 # draw the level
                 level_surface = font.render(f"{self.pokemon.level}", True, (0, 0, 0))
                 screen.blit(level_surface, (self.pos[0] + 29 * scale, self.pos[1] - 2 * scale))   
+
+healthbar_offset_dict = {
+    3: 0,
+    4: 12,
+    5: 20,
+    6: 28,
+    7: 36
+}
+
 
 class MovesSelect(UIelement):
     def __init__(self, sprite, pos):
@@ -322,12 +334,14 @@ conn.close()
 # hp starts at index 12
 
 charmander = Pokemon(charmander_data[0], charmander_data[1], "CHARMANDER", 100, 0, charmander_data[2], charmander_data[3], charmander_data[12], charmander_data[13], charmander_data[14], charmander_data[15], charmander_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Scratch(), Growl(), Quickattack()], True)
-mewtwo = Pokemon(150, "MEWTWO", "MEWTWO", 70, 0, "PSYCHIC", None, 106, 110, 90, 154, 130, 15, 15, 15, 15, [Tackle(), Growl(), Quickattack()], True)
+mewtwo = Pokemon(150, "MEWTWO", "MEWTWO", 20, 0, "PSYCHIC", None, 106, 110, 90, 154, 130, 15, 15, 15, 15, [Tackle(), Growl(), Quickattack()], True)
+mew = Pokemon(151, "MEW", "MEW", 1, 0, "PSYCHIC", None, 100, 100, 100, 100, 100, 15, 15, 15, 15, [Tackle(), Growl(), Quickattack()], True)
+
 
 squirtle = Pokemon(squirtle_data[0], squirtle_data[1], "SQUIRTLE", 5, 0, squirtle_data[2], squirtle_data[3], squirtle_data[12], squirtle_data[13], squirtle_data[14], squirtle_data[15], squirtle_data[16], random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Watergun()])
 bulbasaur = Pokemon(bulbasaur_data[0], bulbasaur_data[1], "BULBASAUR", 5, 0,bulbasaur_data[2], bulbasaur_data[3], bulbasaur_data[12], bulbasaur_data[13], bulbasaur_data[14], bulbasaur_data[15], 140, random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), random.randint(0, 15), [Growl(), Tackle()])
 
-player = Trainer("RED", [charmander], pygame.image.load(f"assets/trainers/red.png"), True)
+player = Trainer("RED", [charmander, mewtwo, mew], pygame.image.load(f"assets/trainers/red.png"), True)
 blue = Trainer("BLUE", [squirtle, bulbasaur], pygame.image.load(f"assets/trainers/blue.png"), ai_level=0)
 PLAYER_INIT_BATTLEPOS = [160 * scale, 40 * scale]
 OPPONENT_INIT_BATTLEPOS = [-50 * scale, 0 * scale]
@@ -613,10 +627,14 @@ def trainer_battle_init(opponent, key_pressed=None):
 
 def trainer_battle_main(opponent, key_pressed=None):
     
-    global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text, death_switch
+    global player, battle_sub_state, current_hover, opponent_intended_action, player_intended_action, battle_text_index, battle_state, battle_index, msgs_index, msgs, hp_fps_wait, who_went_first, half_turn_done, battle_mon_index, shownFirst, opponent_mon_cry, opponent_healthbar, switch_pkmn_text, death_switch, end_turn
+
+    print(battle_sub_state)
+    print(player_intended_action)
 
     if battle_sub_state == "player_select":
         half_turn_done = False
+        end_turn = False
         main_selector.pos = opts_cur_hov_dict[current_hover]
 
         opponent.current_pokemon.battlesprite_draw()
@@ -643,6 +661,7 @@ def trainer_battle_main(opponent, key_pressed=None):
             elif current_hover == 1:
                 battle_sub_state = "player_choose_mon"
                 shownFirst = False
+                player_intended_action = None
                 death_switch = False
                 current_hover = 0
             elif current_hover == 2:
@@ -715,8 +734,9 @@ def trainer_battle_main(opponent, key_pressed=None):
         if player_intended_action:
             msgs = player_intended_action.effect(player.current_pokemon, opponent.current_pokemon, False)
             msgs_index = 0
-            battle_sub_state = "display_msgs"
             msgs = [msg for msg in msgs if msg != "" and msg != None]
+        battle_sub_state = "display_msgs"
+        
     
     elif battle_sub_state == "perform_opponent_actions":
         opponent.current_pokemon.battlesprite_draw()
@@ -728,8 +748,8 @@ def trainer_battle_main(opponent, key_pressed=None):
         if opponent_intended_action:
             msgs = opponent_intended_action.effect(opponent.current_pokemon, player.current_pokemon, True)
             msgs_index = 0
-            battle_sub_state = "display_msgs"
             msgs = [msg for msg in msgs if msg != "" and msg != None]
+        battle_sub_state = "display_msgs"
 
     elif battle_sub_state == "display_msgs":
         opponent.current_pokemon.battlesprite_draw()
@@ -767,17 +787,46 @@ def trainer_battle_main(opponent, key_pressed=None):
                     elif death_check(opponent.current_pokemon):
                         battle_sub_state = "opponent_withdraw_mon"
                     else:
-                        if player_intended_action:
+                        if not end_turn:
                             battle_sub_state = f"perform_{second}_actions" if half_turn_done else f"perform_{first}_actions"
+                            end_turn = True
                         else:
-                            battle_sub_state = "player_select"
+                            battle_sub_state = "damage_conditions" # burn, poison, etc.
+                            player_status = player.current_pokemon.status
+                            opponent_status = opponent.current_pokemon.status
+                            battle_sub_state = "damage_conditions"if player_status or opponent_status else "player_select"
+                            status_msgs = []
+                            status_msg_index = 0
+                            if player_status:
+                                status_msgs.append(f"{player.current_pokemon.nickname} is hurt by its {player_status}!")
+                            if opponent_status:
+                                status_msgs.append(f"{opponent.current_pokemon.nickname} is hurt by its {opponent_status}!")
+
+                            if player.current_pokemon.status == "burn":
+                                player.current_pokemon.pending_hp -= player.current_pokemon.max_hp // 16
+                            if opponent.current_pokemon.status == "burn":
+                                opponent.current_pokemon.pending_hp -= opponent.current_pokemon.max_hp // 16
+
+                            if player.current_pokemon.status == "poison" and player.current_pokemon.poison_counter == 0:
+                                player.current_pokemon.pending_hp -= player.current_pokemon.max_hp // 8
+                            elif player.current_pokemon.status == "poison" and player.current_pokemon.poison_counter > 0:
+                                player.current_pokemon.poison_counter += 1
+                                player.current_pokemon.pending_hp -= player.current_pokemon.max_hp // 16 * player.current_pokemon.poison_counter
+                                if player.current_pokemon.poison_counter == 16:
+                                    player.current_pokemon.status = "poison"
+                                    player.current_pokemon.poison_counter = 16
+                            if opponent.current_pokemon.status == "poison" and opponent.current_pokemon.poison_counter == 0:
+                                opponent.current_pokemon.pending_hp -= opponent.current_pokemon.max_hp // 8
+                            elif opponent.current_pokemon.status == "poison" and opponent.current_pokemon.poison_counter > 0:
+                                opponent.current_pokemon.poison_counter += 1
+                                opponent.current_pokemon.pending_hp -= opponent.current_pokemon.max_hp // 16 * opponent.current_pokemon.poison_counter
+                                if opponent.current_pokemon.poison_counter == 16:
+                                    opponent.current_pokemon.status = "poison"
+                                    opponent.current_pokemon.poison_counter = 16
                     shownFirst = False
                     battle_mon_index = 0
                     msgs_index = 0
                     battle_text_index = 0
-                    if not half_turn_done:
-                        player_intended_action = None
-                        opponent_intended_action = None
 
     elif battle_sub_state == "opponent_withdraw_mon":
         battle_text_index += 1
@@ -892,6 +941,7 @@ def trainer_battle_main(opponent, key_pressed=None):
                 switch_pkmn_text = f"{player.current_pokemon.nickname} is\nalready out!"
                 battle_text_index = 0
             elif not death_check(player.party[current_hover]):
+                player.current_pokemon.poison_counter = 0 # reset toxic counter
                 player.current_pokemon = player.party[current_hover]
                 player_healthbar.pokemon = player.current_pokemon
                 battle_sub_state = "player_send_out_mon"
@@ -900,7 +950,6 @@ def trainer_battle_main(opponent, key_pressed=None):
             else:
                 switch_pkmn_text = f"{player.party[current_hover].nickname} is\nunable to battle!"
                 battle_text_index = 0
-                current_hover = 0
         elif key_pressed == "backspace" and not death_switch:
             battle_sub_state = "player_select"
             current_hover = 0
@@ -942,6 +991,23 @@ def trainer_battle_main(opponent, key_pressed=None):
 
         main_textbox.draw()
         display_text(f"Go! {player.current_pokemon.species}!", (8 * scale, 110 * scale), battle_text_index // 2)
+
+    elif battle_sub_state == "damage_conditions":
+        opponent.current_pokemon.battlesprite_draw()
+        player.current_pokemon.battlesprite_draw()
+        main_textbox.draw()
+        player_healthbar.draw()
+        opponent_healthbar.draw()
+
+        battle_text_index += 1
+
+        if display_text(status_msgs[status_msg_index], (8 * scale, 110 * scale), battle_text_index // 2) == "done" and player.current_pokemon.pending_hp == 0 and opponent.current_pokemon.pending_hp == 0:
+            if status_msg_index < len(status_msgs) - 1:
+                battle_text_index = 0
+                status_msg_index += 1
+            else:
+                battle_sub_state = "player_select"
+                battle_text_index = 0
 
     elif battle_sub_state == "player_run":
         opponent.current_pokemon.battlesprite_draw()

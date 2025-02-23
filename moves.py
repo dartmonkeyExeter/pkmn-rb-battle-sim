@@ -203,6 +203,11 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
     if target_invincible is None:
         target_invincible = target.invincible
 
+    # **Full Paralysis Check (25% Chance)**
+    if user.status == "paralyzed" and random.randint(1, 100) <= 25:
+        return_messages.append(f"{'Enemy ' if enemy else ''}{user.nickname} is fully paralyzed and can't move!")
+        return return_messages, None  # Move fails due to full paralysis
+
     # Check if the move deals damage
     damage = None  # Initialize damage variable
     if move.power != 0 or damage_override is not None:
@@ -270,6 +275,7 @@ def apply_move_effect(move, user, target, enemy, stat_changes=None, stat_target=
     return_messages.append(effectiveness_message)
 
     return return_messages, damage  # Damage is now always returned properly
+
 
 class Acid(Move):
     def __init__(self):
