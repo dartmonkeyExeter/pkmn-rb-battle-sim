@@ -1083,8 +1083,7 @@ def trainer_battle_main(opponent, key_pressed=None):
         if display_text(f"{player.name} defeated\n{opponent.name}!", (8 * scale, 110 * scale), battle_text_index // 2) == "done":
             continue_tri.draw()
             if key_pressed == "enter":
-                battle_state = "postcutscene"
-                battle_sub_state = "player_wins"
+                msgs_index += 1
                 battle_text_index = 0
 
     if opponent.current_pokemon.pending_hp < 0:
